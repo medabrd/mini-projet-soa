@@ -1,0 +1,17 @@
+{
+  "name": "order-service",
+  "version": "0.1.0",
+  "description": "Microservice de gestion des commandes (SoA - projet livraison)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --experimental-sqlite server.js",
+    "dev": "node --experimental-sqlite --watch server.js"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.2",
+    "@grpc/proto-loader": "^0.7.13",
+    "kafkajs": "^2.2.4",
+    "uuid": "^10.0.0"
+  }
+}
