@@ -1,0 +1,34 @@
+node_modules/
+*.log
+.env
+.env.*
+
+# bases locales
+*.sqlite
+*.sqlite3
+*.db
+data/
+**/data/
+
+# volume kafka docker
+kafka_data/
+
+# builds
+dist/
+build/
+
+# tests
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+tmp/
+
+# config Claude Code locale
+.claude/
