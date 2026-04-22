@@ -57,5 +57,3 @@ Avancement
 - [ ] Phase 4 — API Gateway
 - [ ] Phase 5 — client web
 - [ ] Phase 6 — doc finale
-
-Le détail de chaque étape et les commandes que j'ai lancées sont dans `JOURNAL.md`.

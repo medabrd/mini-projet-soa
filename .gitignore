@@ -32,3 +32,6 @@ tmp/
 
 # config Claude Code locale
 .claude/
+
+# journal de bord perso, je le garde local
+JOURNAL.md
