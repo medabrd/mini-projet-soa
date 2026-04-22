@@ -19,12 +19,40 @@ const producer = kafka.producer({
 
 const consumer = kafka.consumer({ groupId: 'order-service-group' });
 
-let connected = false;
+let producerReady = false;
+let consumerReady = false;
+
+async function ensureTopics() {
+  const admin = kafka.admin();
+  await admin.connect();
+  try {
+    await admin.createTopics({
+      topics: [
+        { topic: ORDER_TOPIC, numPartitions: 1, replicationFactor: 1 },
+        { topic: DELIVERY_TOPIC, numPartitions: 1, replicationFactor: 1 },
+      ],
+      waitForLeaders: true,
+    });
+  } finally {
+    await admin.disconnect();
+  }
+}
 
 async function connect() {
+  // On essaye producer et consumer indépendamment : un échec d'un côté
+  // ne doit pas désactiver l'autre.
+
   try {
     await producer.connect();
+    producerReady = true;
     console.log(`Kafka producer connecte (${BROKER})`);
+  } catch (err) {
+    console.warn(`Kafka producer indisponible (${err.message}). Les publish seront ignores.`);
+  }
+
+  try {
+    await ensureTopics();
+    console.log(`Topics Kafka prets : ${ORDER_TOPIC}, ${DELIVERY_TOPIC}`);
 
     await consumer.connect();
     await consumer.subscribe({ topic: DELIVERY_TOPIC, fromBeginning: false });
@@ -38,17 +66,15 @@ async function connect() {
         }
       },
     });
+    consumerReady = true;
     console.log(`Kafka consumer abonne au topic ${DELIVERY_TOPIC}`);
-
-    connected = true;
   } catch (err) {
-    console.warn(`Kafka indisponible (${err.message}). Le service gRPC tourne quand meme.`);
-    connected = false;
+    console.warn(`Kafka consumer indisponible (${err.message}). Le service ne reagira pas aux delivery.events.`);
   }
 }
 
 async function publishOrderPlaced(order) {
-  if (!connected) return;
+  if (!producerReady) return;
   try {
     await producer.send({
       topic: ORDER_TOPIC,
@@ -75,7 +101,7 @@ async function publishOrderPlaced(order) {
 }
 
 async function publishOrderCancelled(orderId, reason) {
-  if (!connected) return;
+  if (!producerReady) return;
   try {
     await producer.send({
       topic: ORDER_TOPIC,
@@ -127,10 +153,12 @@ function handleDeliveryEvent(evt) {
 }
 
 async function disconnect() {
-  if (!connected) return;
-  await consumer.disconnect().catch(() => {});
-  await producer.disconnect().catch(() => {});
-  connected = false;
+  if (consumerReady) {
+    await consumer.disconnect().catch(() => {});
+  }
+  if (producerReady) {
+    await producer.disconnect().catch(() => {});
+  }
 }
 
 module.exports = {
