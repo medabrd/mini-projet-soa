@@ -2,6 +2,7 @@ const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
 const path = require('path');
 const repo = require('./orders-repo');
+const kafka = require('./kafka');
 
 // Le fichier proto est partagé à la racine du repo
 const PROTO_PATH = path.resolve(__dirname, '..', '..', '..', 'proto', 'order.proto');
@@ -29,6 +30,8 @@ const handlers = {
   CreateOrder: (call, callback) => {
     try {
       const order = repo.createOrder(call.request);
+      // fire-and-forget Kafka publish
+      kafka.publishOrderPlaced(order);
       callback(null, order);
     } catch (err) {
       callback({ code: grpc.status.INVALID_ARGUMENT, message: err.message });
@@ -72,6 +75,7 @@ const handlers = {
     try {
       const order = repo.cancelOrder(call.request.id);
       if (!order) return callback(notFoundError());
+      kafka.publishOrderCancelled(order.id, call.request.reason);
       callback(null, order);
     } catch (err) {
       callback({ code: grpc.status.FAILED_PRECONDITION, message: err.message });
