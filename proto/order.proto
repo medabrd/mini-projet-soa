@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package order;
+
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (Order);
+  rpc GetOrder(GetOrderRequest) returns (Order);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (Order);
+  rpc CancelOrder(CancelOrderRequest) returns (Order);
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  ASSIGNED = 2;
+  PICKED_UP = 3;
+  IN_TRANSIT = 4;
+  DELIVERED = 5;
+  CANCELLED = 6;
+}
+
+message OrderItem {
+  string product_name = 1;
+  int32 quantity = 2;
+  double unit_price = 3;
+}
+
+message Order {
+  string id = 1;
+  string customer_id = 2;
+  string customer_name = 3;
+  string delivery_address = 4;
+  repeated OrderItem items = 5;
+  double total_amount = 6;
+  OrderStatus status = 7;
+  string assigned_driver_id = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+message CreateOrderRequest {
+  string customer_id = 1;
+  string customer_name = 2;
+  string delivery_address = 3;
+  repeated OrderItem items = 4;
+}
+
+message GetOrderRequest {
+  string id = 1;
+}
+
+message ListOrdersRequest {
+  string customer_id = 1;
+  OrderStatus status = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message ListOrdersResponse {
+  repeated Order orders = 1;
+  int32 total = 2;
+}
+
+message UpdateOrderStatusRequest {
+  string id = 1;
+  OrderStatus status = 2;
+  string assigned_driver_id = 3;
+}
+
+message CancelOrderRequest {
+  string id = 1;
+  string reason = 2;
+}
