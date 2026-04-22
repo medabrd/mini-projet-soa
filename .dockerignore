@@ -1,0 +1,22 @@
+# Pas utile dans les images
+.git
+.gitignore
+.claude
+.dockerignore
+README.md
+JOURNAL.md
+*.docx
+
+# Modules et données runtime (chaque service refait son npm ci)
+**/node_modules
+**/data
+*.sqlite
+*.sqlite3
+*.log
+
+# Variables d'env (passées via docker-compose plutôt)
+.env
+.env.*
+
+# Docs (non utiles à l'exécution)
+docs/

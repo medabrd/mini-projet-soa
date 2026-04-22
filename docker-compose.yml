@@ -44,6 +44,25 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
       DYNAMIC_CONFIG_ENABLED: "true"
 
+  order-service:
+    build:
+      context: .
+      dockerfile: services/order-service/Dockerfile
+    container_name: order-service
+    ports:
+      - "50051:50051"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER: kafka:29092
+      PORT: "50051"
+    volumes:
+      - order_data:/app/data
+    restart: unless-stopped
+
 volumes:
   kafka_data:
+    driver: local
+  order_data:
     driver: local
