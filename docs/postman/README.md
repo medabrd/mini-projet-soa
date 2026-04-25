@@ -65,4 +65,5 @@ Fichiers dans ce dossier
 
 - `order-service-tests.md` — payloads et réponses attendues pour les 5 RPCs de order-service
 - `driver-service-tests.md` — payloads pour les 5 RPCs de driver-service (dont le server-streaming)
-- (tracking, gateway à venir au fil des phases)
+- `tracking-service-tests.md` — payloads pour les 5 RPCs de tracking-service + scénario de chaîne complète Kafka
+- (gateway à venir à la phase 4)

@@ -76,8 +76,27 @@ services:
       PORT: "50052"
     restart: unless-stopped
 
+  tracking-service:
+    build:
+      context: .
+      dockerfile: services/tracking-service/Dockerfile
+    container_name: tracking-service
+    ports:
+      - "50053:50053"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER: kafka:29092
+      PORT: "50053"
+    volumes:
+      - tracking_data:/app/data
+    restart: unless-stopped
+
 volumes:
   kafka_data:
     driver: local
   order_data:
+    driver: local
+  tracking_data:
     driver: local
