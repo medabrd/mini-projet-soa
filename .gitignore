@@ -38,3 +38,10 @@ JOURNAL.md
 
 # resultats du dernier test du client gRPC (snapshot, pas a versionner)
 **/last-test-results.json
+
+# captures d'ecran perso (utiles pour debugger mais hors du livrable)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
