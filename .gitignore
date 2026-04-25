@@ -35,3 +35,6 @@ tmp/
 
 # journal de bord perso, je le garde local
 JOURNAL.md
+
+# resultats du dernier test du client gRPC (snapshot, pas a versionner)
+**/last-test-results.json
