@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package tracking;
+
+service TrackingService {
+  rpc GetDelivery(GetDeliveryRequest) returns (Delivery);
+  rpc ListDeliveries(ListDeliveriesRequest) returns (ListDeliveriesResponse);
+  rpc GetDeliveryHistory(GetDeliveryHistoryRequest) returns (DeliveryHistoryResponse);
+  rpc AdvanceDeliveryStatus(AdvanceDeliveryStatusRequest) returns (Delivery);
+
+  // Server-streaming : pousse l'etat de la livraison a chaque changement
+  rpc WatchDelivery(WatchDeliveryRequest) returns (stream Delivery);
+}
+
+enum DeliveryStatus {
+  DELIVERY_STATUS_UNSPECIFIED = 0;
+  PENDING_ASSIGNMENT = 1;
+  ASSIGNED = 2;
+  PICKED_UP = 3;
+  IN_TRANSIT = 4;
+  DELIVERED = 5;
+  CANCELLED = 6;
+}
+
+message Delivery {
+  string id = 1;
+  string order_id = 2;
+  string customer_id = 3;
+  string customer_name = 4;
+  string delivery_address = 5;
+  string driver_id = 6;
+  string driver_name = 7;
+  DeliveryStatus status = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+message DeliveryEvent {
+  int64 id = 1;
+  string delivery_id = 2;
+  string event_type = 3;
+  string event_data_json = 4;
+  string created_at = 5;
+}
+
+message GetDeliveryRequest {
+  string id = 1;
+}
+
+message ListDeliveriesRequest {
+  DeliveryStatus status = 1;
+  string driver_id = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message ListDeliveriesResponse {
+  repeated Delivery deliveries = 1;
+  int32 total = 2;
+}
+
+message GetDeliveryHistoryRequest {
+  string delivery_id = 1;
+}
+
+message DeliveryHistoryResponse {
+  repeated DeliveryEvent events = 1;
+}
+
+message AdvanceDeliveryStatusRequest {
+  string delivery_id = 1;
+  DeliveryStatus new_status = 2;
+}
+
+message WatchDeliveryRequest {
+  string delivery_id = 1;
+}
