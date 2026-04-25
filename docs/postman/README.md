@@ -64,4 +64,5 @@ Fichiers dans ce dossier
 -------------------------
 
 - `order-service-tests.md` — payloads et réponses attendues pour les 5 RPCs de order-service
-- (driver, tracking, gateway à venir au fil des phases)
+- `driver-service-tests.md` — payloads pour les 5 RPCs de driver-service (dont le server-streaming)
+- (tracking, gateway à venir au fil des phases)

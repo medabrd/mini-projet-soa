@@ -61,6 +61,21 @@ services:
       - order_data:/app/data
     restart: unless-stopped
 
+  driver-service:
+    build:
+      context: .
+      dockerfile: services/driver-service/Dockerfile
+    container_name: driver-service
+    ports:
+      - "50052:50052"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER: kafka:29092
+      PORT: "50052"
+    restart: unless-stopped
+
 volumes:
   kafka_data:
     driver: local
