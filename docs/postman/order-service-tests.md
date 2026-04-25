@@ -5,7 +5,18 @@ Tests gRPC — order-service
 - Serveur : `localhost:50051`
 - Proto : `proto/order.proto`
 
-Les payloads ci-dessous sont à utiliser dans Postman → gRPC Request → onglet Message.
+Les payloads ci-dessous sont à coller dans Postman → gRPC Request → onglet Message. Voir `README.md` de ce dossier pour la procédure de création des requêtes dans Postman.
+
+
+Test rapide automatisé (sans Postman)
+--------------------------------------
+
+Avant de passer par Postman, on peut valider que le service marche avec le client de test fourni :
+
+    cd services/order-service
+    node test-client.js
+
+→ enchaîne les 5 RPCs sur une commande de bout en bout et affiche les résultats. Si ça passe, le service est OK.
 
 
 1. CreateOrder
@@ -17,12 +28,12 @@ Crée une nouvelle commande. Le service génère un UUID, calcule le total à pa
 
 ```json
 {
-  "customer_id": "cust-001",
+  "customer_id": "cust-230",
   "customer_name": "Med Abroud",
-  "delivery_address": "12 Avenue Habib Bourguiba, Tunis",
+  "delivery_address": "sahloul 5 rue de l'honneur",
   "items": [
-    { "product_name": "Pizza Margherita", "quantity": 2, "unit_price": 12.5 },
-    { "product_name": "Coca 33cl", "quantity": 1, "unit_price": 3 }
+    { "product_name": "Pizza Neptune", "quantity": 2, "unit_price": 12.5 },
+    { "product_name": "Sabrine 1L", "quantity": 1, "unit_price": 3 }
   ]
 }
 ```
@@ -32,24 +43,24 @@ Crée une nouvelle commande. Le service génère un UUID, calcule le total à pa
 ```json
 {
   "id": "<uuid généré côté serveur>",
-  "customer_id": "cust-001",
+  "customer_id": "cust-230",
   "customer_name": "Med Abroud",
-  "delivery_address": "12 Avenue Habib Bourguiba, Tunis",
+  "delivery_address": "sahloul 5 rue de l'honneur",
   "items": [
-    { "product_name": "Pizza Margherita", "quantity": 2, "unit_price": 12.5 },
-    { "product_name": "Coca 33cl", "quantity": 1, "unit_price": 3 }
+    { "product_name": "Pizza Neptune", "quantity": 2, "unit_price": 12.5 },
+    { "product_name": "Sabrine 1L", "quantity": 1, "unit_price": 3 }
   ],
   "total_amount": 28,
   "status": "PENDING",
   "assigned_driver_id": "",
-  "created_at": "2026-05-12T17:00:00.000Z",
-  "updated_at": "2026-05-12T17:00:00.000Z"
+  "created_at": "2026-05-12T...",
+  "updated_at": "2026-05-12T..."
 }
 ```
 
 **Erreur si items vide :** code `INVALID_ARGUMENT`, message "La commande doit contenir au moins un article".
 
-→ Si Kafka est lancé, un event `order.placed` est publié sur le topic `order.events`. Sinon le RPC réussit quand même (Kafka est fire-and-forget).
+→ Si Kafka tourne, un event `order.placed` est publié sur le topic `order.events` (visible dans Kafka UI sur http://localhost:8080).
 
 
 2. GetOrder
@@ -88,7 +99,7 @@ Liste les commandes avec filtres optionnels et pagination.
 
 ```json
 {
-  "customer_id": "cust-001",
+  "customer_id": "cust-230",
   "limit": 10,
   "offset": 0
 }
@@ -109,7 +120,7 @@ Liste les commandes avec filtres optionnels et pagination.
 ```json
 {
   "orders": [ /* tableau d'Order */ ],
-  "total": 5
+  "total": 4
 }
 ```
 
@@ -167,7 +178,7 @@ Annule une commande. Échec si la commande est déjà livrée.
 **Erreur si ID inconnu :** code `NOT_FOUND`.
 **Erreur si déjà livrée :** code `FAILED_PRECONDITION`, message "Impossible d'annuler une commande deja livree".
 
-→ Si Kafka est lancé, un event `order.cancelled` est publié sur `order.events`.
+→ Si Kafka tourne, un event `order.cancelled` est publié sur `order.events`.
 
 
 Scénario de test complet (à exécuter dans cet ordre)

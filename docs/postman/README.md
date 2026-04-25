@@ -4,37 +4,49 @@ Tests Postman
 Ce dossier rassemble la doc et les exemples de payloads pour tester chaque microservice du projet avec Postman. Quand tous les services seront prêts, je créerai un workspace public Postman avec les collections correspondantes (REST, GraphQL, gRPC) — c'est un des livrables à déposer sur Classroom.
 
 
+Note importante sur l'import gRPC
+----------------------------------
+
+Postman supporte le gRPC depuis la v9, mais le format de **collection JSON v2.1 ne contient pas de structure officielle pour les requêtes gRPC**. Si on exporte/importe une collection contenant des requêtes gRPC, Postman ne sait pas les recréer comme des "vraies" requêtes gRPC : elles arrivent comme des requêtes HTTP avec une méthode bizarre `INVOKE` et l'URL `grpc://...`, et ça donne une erreur "Invalid protocol: grpc".
+
+Donc on **crée les requêtes manuellement dans Postman** au moment du dépôt, en suivant les fichiers `*-tests.md` de ce dossier qui contiennent tous les payloads. C'est l'affaire de 5-10 minutes par service.
+
+
 Prérequis
 ---------
 
-- Postman v9 ou plus (support gRPC ajouté à partir de cette version, c'est le cas par défaut aujourd'hui)
-- Le service à tester doit tourner localement (`node server.js` dans le dossier du service)
-- Kafka peut tourner ou pas selon le test, ça change rien aux RPCs CRUD
+- Postman v9 ou plus (support gRPC standard aujourd'hui)
+- Le service à tester doit tourner (`docker compose up -d` à la racine du repo)
 
 
-Comment tester un service en gRPC
-----------------------------------
+Procédure de remplissage (à faire une fois à la fin)
+-----------------------------------------------------
 
-1. Postman → New → gRPC Request
-2. Server URL : `localhost:50051` (50051 pour order-service, 50052 pour driver, 50053 pour tracking)
-3. Service definition : "Import a .proto file" → choisir le fichier dans le dossier `proto/` du repo (ex: `proto/order.proto`)
-4. Une fois importé, sélectionner le service (ex: `order.OrderService`) et la méthode (ex: `CreateOrder`) dans les menus déroulants
-5. Coller le payload JSON dans l'onglet "Message"
-6. Cliquer "Invoke" → la réponse apparaît avec son code de statut gRPC
+Pour chaque microservice :
 
-Pour les requêtes avec un ID retourné par une autre requête (ex: GetOrder après CreateOrder), copier l'ID depuis la réponse de CreateOrder et le coller dans le payload de GetOrder.
+1. **Créer une collection** : sidebar Collections → bouton **+ Create new** → Collection → nommer comme le service (ex: `order-service`)
+2. **Pour chaque RPC du service**, ajouter une requête gRPC :
+   - Clic droit sur la collection → **Add request** → **gRPC** (important : pas HTTP)
+   - Renommer la requête (ex: `CreateOrder`)
+   - **Server URL** : `localhost:<port>` (50051 pour order, 50052 pour driver, 50053 pour tracking)
+   - Onglet **Service definition** → **Import a .proto file** → choisir le `.proto` dans le dossier `proto/` du repo (uniquement la 1re fois suffit, ensuite Postman se souvient)
+   - Menu **Select a method** → choisir le RPC correspondant
+   - Onglet **Message** → coller le payload JSON (depuis le fichier `<service>-tests.md`)
+   - Cliquer **Invoke** pour lancer et avoir la réponse
+   - **Ctrl+S** pour sauvegarder dans la collection
+3. **Rendre le workspace public** : Settings du workspace → Visibility → Public
+4. **Copier le lien public** du workspace pour le déposer sur Classroom
 
 
-Pour le dépôt Classroom
-------------------------
+Comment je vérifie que le service marche sans Postman
+-------------------------------------------------------
 
-Une fois toutes les requêtes testées et les réponses sauvegardées dans Postman :
+Chaque service a un fichier `test-client.js` (ou équivalent) qui fait les mêmes appels gRPC via Node.js. Pour valider rapidement qu'un service marche :
 
-1. Créer un workspace Postman (Settings → New Workspace)
-2. Le rendre public : Settings du workspace → Visibility → Public
-3. Importer / créer les collections (une par service ou une globale)
-4. Lancer les requêtes pour avoir les réponses sauvegardées (le prof veut voir les réponses, pas juste les requêtes)
-5. Copier le lien public du workspace pour le déposer sur Google Classroom
+    cd services/<nom-du-service>
+    node test-client.js
+
+→ enchaîne les RPCs et affiche les résultats. Pratique pour le dev, et ça prouve que le code marche indépendamment de Postman.
 
 
 Liste des services et leurs ports
@@ -51,5 +63,5 @@ Liste des services et leurs ports
 Fichiers dans ce dossier
 -------------------------
 
-- `order-service-tests.md` — exemples de payloads pour les 5 RPCs de order-service
+- `order-service-tests.md` — payloads et réponses attendues pour les 5 RPCs de order-service
 - (driver, tracking, gateway à venir au fil des phases)
