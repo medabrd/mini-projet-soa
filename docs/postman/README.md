@@ -66,4 +66,4 @@ Fichiers dans ce dossier
 - `order-service-tests.md` — payloads et réponses attendues pour les 5 RPCs de order-service
 - `driver-service-tests.md` — payloads pour les 5 RPCs de driver-service (dont le server-streaming)
 - `tracking-service-tests.md` — payloads pour les 5 RPCs de tracking-service + scénario de chaîne complète Kafka
-- (gateway à venir à la phase 4)
+- `gateway-tests.md` — endpoints REST + queries/mutations GraphQL exposés par l'API Gateway (avec joins cross-services)

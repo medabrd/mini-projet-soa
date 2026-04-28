@@ -93,6 +93,24 @@ services:
       - tracking_data:/app/data
     restart: unless-stopped
 
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: gateway
+    ports:
+      - "3000:3000"
+    depends_on:
+      - order-service
+      - driver-service
+      - tracking-service
+    environment:
+      PORT: "3000"
+      ORDER_SERVICE: "order-service:50051"
+      DRIVER_SERVICE: "driver-service:50052"
+      TRACKING_SERVICE: "tracking-service:50053"
+    restart: unless-stopped
+
 volumes:
   kafka_data:
     driver: local
