@@ -67,3 +67,7 @@ Fichiers dans ce dossier
 - `driver-service-tests.md` — payloads pour les 5 RPCs de driver-service (dont le server-streaming)
 - `tracking-service-tests.md` — payloads pour les 5 RPCs de tracking-service + scénario de chaîne complète Kafka
 - `gateway-tests.md` — endpoints REST + queries/mutations GraphQL exposés par l'API Gateway (avec joins cross-services)
+- `gateway-rest.postman_collection.json` — collection Postman v2.1 importable directement (REST)
+- `gateway-graphql.postman_collection.json` — collection Postman v2.1 importable directement (GraphQL)
+
+Note : les fichiers `*.postman_collection.json` n'existent que pour le gateway parce que REST et GraphQL sont supportés par le format Postman v2.1. Pour les 3 microservices gRPC, on doit créer les requêtes manuellement dans Postman (cf. note plus haut sur l'import gRPC).

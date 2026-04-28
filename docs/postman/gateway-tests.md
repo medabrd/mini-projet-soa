@@ -222,13 +222,31 @@ Variables :
 Pour tester dans Postman
 -------------------------
 
-### Collection REST
+### Import direct des collections (recommandé)
+
+Contrairement au gRPC, REST et GraphQL sont parfaitement supportés par le format Postman v2.1. **Deux collections JSON sont fournies dans ce dossier**, prêtes à importer :
+
+- `gateway-rest.postman_collection.json` — 16 requêtes REST organisées en 4 dossiers (Health, Orders, Drivers, Deliveries) incluant les endpoints SSE
+- `gateway-graphql.postman_collection.json` — 5 opérations GraphQL (3 queries + 2 mutations) avec joins cross-services
+
+Procédure :
+1. Postman → bouton **Import** (en haut à gauche)
+2. Glisser-déposer les 2 fichiers `.json` (ou `File → Choose Files`)
+3. Postman crée 2 nouvelles collections : `gateway-rest` et `gateway-graphql`
+4. Variables de collection à renseigner après les premières requêtes :
+   - `gateway-rest` → `order_id`, `driver_id`, `delivery_id` (récupérés depuis les réponses des Create/Register)
+   - `gateway-graphql` → `order_id`, `delivery_id`
+5. Cliquer **Send** sur chaque requête, puis **Save Response → Save as example** pour figer la réponse dans la collection (livrable demandé)
+
+### Création manuelle (si on veut refaire à zéro)
+
+#### Collection REST
 
 1. Créer une collection `gateway-rest`
 2. Pour chaque endpoint REST, **Add request → HTTP** (pas gRPC cette fois)
 3. Coller URL + body, save as example après Invoke
 
-### Collection GraphQL
+#### Collection GraphQL
 
 1. Créer une collection `gateway-graphql`
 2. **Add request → GraphQL** (Postman supporte GraphQL nativement)

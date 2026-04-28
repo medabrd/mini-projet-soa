@@ -1,0 +1,207 @@
+{
+  "info": {
+    "name": "gateway-rest",
+    "description": "Endpoints REST exposes par l'API Gateway (port 3000). Couvre orders, drivers, deliveries. Variables a renseigner apres le premier appel : order_id, driver_id, delivery_id.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000" },
+    { "key": "order_id", "value": "" },
+    { "key": "driver_id", "value": "" },
+    { "key": "delivery_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "POST /api/orders (CreateOrder)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"cust-230\",\n  \"customer_name\": \"Med Abroud\",\n  \"delivery_address\": \"sahloul 5 rue de l'honneur\",\n  \"items\": [\n    { \"product_name\": \"Pizza Neptune\", \"quantity\": 2, \"unit_price\": 12.5 },\n    { \"product_name\": \"Sabrine 1L\", \"quantity\": 1, \"unit_price\": 3 }\n  ]\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/orders", "host": ["{{base_url}}"], "path": ["api", "orders"] }
+          }
+        },
+        {
+          "name": "GET /api/orders/:id (GetOrder)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/orders/{{order_id}}", "host": ["{{base_url}}"], "path": ["api", "orders", "{{order_id}}"] }
+          }
+        },
+        {
+          "name": "GET /api/orders?customer_id (ListOrders)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/orders?customer_id=cust-230&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "orders"],
+              "query": [
+                { "key": "customer_id", "value": "cust-230" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/orders/:id/status (UpdateOrderStatus)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ASSIGNED\",\n  \"assigned_driver_id\": \"{{driver_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/orders/{{order_id}}/status", "host": ["{{base_url}}"], "path": ["api", "orders", "{{order_id}}", "status"] }
+          }
+        },
+        {
+          "name": "POST /api/orders/:id/cancel (CancelOrder)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Client a change d'avis\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/orders/{{order_id}}/cancel", "host": ["{{base_url}}"], "path": ["api", "orders", "{{order_id}}", "cancel"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Drivers",
+      "item": [
+        {
+          "name": "POST /api/drivers (RegisterDriver)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Karim Ben Salah\",\n  \"phone\": \"+216 22 123 456\",\n  \"vehicle_type\": \"scooter\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/drivers", "host": ["{{base_url}}"], "path": ["api", "drivers"] }
+          }
+        },
+        {
+          "name": "GET /api/drivers/available (ListAvailableDrivers)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/drivers/available?limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "drivers", "available"],
+              "query": [{ "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "GET /api/drivers/:id (GetDriver)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/drivers/{{driver_id}}", "host": ["{{base_url}}"], "path": ["api", "drivers", "{{driver_id}}"] }
+          }
+        },
+        {
+          "name": "PATCH /api/drivers/:id/location (UpdateLocation)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 35.8245,\n  \"longitude\": 10.6347,\n  \"speed_kmh\": 32,\n  \"heading_deg\": 90\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/drivers/{{driver_id}}/location", "host": ["{{base_url}}"], "path": ["api", "drivers", "{{driver_id}}", "location"] }
+          }
+        },
+        {
+          "name": "GET /api/drivers/:id/stream (SSE)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "text/event-stream" }],
+            "url": { "raw": "{{base_url}}/api/drivers/{{driver_id}}/stream", "host": ["{{base_url}}"], "path": ["api", "drivers", "{{driver_id}}", "stream"] },
+            "description": "Server-Sent Events. La connexion HTTP reste ouverte, chaque update de position arrive comme un message SSE. A tester avec curl -N ou en navigateur."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Deliveries",
+      "item": [
+        {
+          "name": "GET /api/deliveries (ListDeliveries)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/deliveries?limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "deliveries"],
+              "query": [{ "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "GET /api/deliveries/:id (GetDelivery)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/deliveries/{{delivery_id}}", "host": ["{{base_url}}"], "path": ["api", "deliveries", "{{delivery_id}}"] }
+          }
+        },
+        {
+          "name": "GET /api/deliveries/:id/history (GetDeliveryHistory)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/deliveries/{{delivery_id}}/history", "host": ["{{base_url}}"], "path": ["api", "deliveries", "{{delivery_id}}", "history"] }
+          }
+        },
+        {
+          "name": "PATCH /api/deliveries/:id/status (AdvanceDeliveryStatus)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_status\": \"PICKED_UP\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/deliveries/{{delivery_id}}/status", "host": ["{{base_url}}"], "path": ["api", "deliveries", "{{delivery_id}}", "status"] }
+          }
+        },
+        {
+          "name": "GET /api/deliveries/:id/watch (SSE)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "text/event-stream" }],
+            "url": { "raw": "{{base_url}}/api/deliveries/{{delivery_id}}/watch", "host": ["{{base_url}}"], "path": ["api", "deliveries", "{{delivery_id}}", "watch"] },
+            "description": "SSE qui relaie le streaming gRPC WatchDelivery. Chaque changement de statut declenche un message."
+          }
+        }
+      ]
+    }
+  ]
+}
