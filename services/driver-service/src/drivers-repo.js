@@ -99,6 +99,22 @@ async function pickAvailableDriver() {
   return docToDriver(doc);
 }
 
+// Libere un livreur quand sa livraison est terminee ou annulee :
+// status repasse a AVAILABLE et current_order_id est vide.
+async function releaseDriver(driverId) {
+  const db = getDb();
+  const doc = await db.drivers.findOne(driverId).exec();
+  if (!doc) return null;
+  if (doc.status !== 'BUSY') return docToDriver(doc);
+  await doc.patch({
+    status: 'AVAILABLE',
+    current_order_id: '',
+    updated_at: nowIso(),
+  });
+  const fresh = await db.drivers.findOne(driverId).exec();
+  return docToDriver(fresh);
+}
+
 // Cree quelques livreurs par defaut si la base est vide.
 // Utile parce que RxDB memory perd tout au redemarrage du conteneur :
 // sans seed, il faudrait re-RegisterDriver a la main apres chaque restart
@@ -130,5 +146,6 @@ module.exports = {
   updateLocation,
   assignDriverToOrder,
   pickAvailableDriver,
+  releaseDriver,
   seedDefaultsIfEmpty,
 };
