@@ -1,93 +1,232 @@
 {
   "info": {
     "name": "gateway-graphql",
-    "description": "Operations GraphQL exposees par l'API Gateway sur http://localhost:3000/graphql. Les queries 'order' et 'deliveries' joignent en une requete les 3 microservices via gRPC. Variables a renseigner : order_id, delivery_id apres les premieres requetes.",
+    "description": "Toutes les operations GraphQL exposees par l'API Gateway sur http://localhost:3000/graphql : 7 queries + 5 mutations. Les resolvers field-level joignent en une seule requete les 3 microservices via gRPC (order, driver, delivery + history). Variables a renseigner : order_id, driver_id, delivery_id apres les premieres requetes.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "graphql_url", "value": "http://localhost:3000/graphql" },
     { "key": "order_id", "value": "" },
+    { "key": "driver_id", "value": "" },
     { "key": "delivery_id", "value": "" }
   ],
   "item": [
     {
-      "name": "Query GetOrderWithJoins",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "graphql",
-          "graphql": {
-            "query": "query GetOrderWithJoins($id: ID!) {\n  order(id: $id) {\n    id\n    status\n    total_amount\n    customer_name\n    items { product_name quantity unit_price }\n    driver {\n      id\n      name\n      vehicle_type\n      status\n      last_location { latitude longitude timestamp }\n    }\n    delivery {\n      id\n      status\n      driver_name\n      history {\n        event_type\n        created_at\n      }\n    }\n  }\n}",
-            "variables": "{\n  \"id\": \"{{order_id}}\"\n}"
+      "name": "Queries",
+      "item": [
+        {
+          "name": "Query order (GetOrderWithJoins)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query GetOrderWithJoins($id: ID!) {\n  order(id: $id) {\n    id\n    status\n    total_amount\n    customer_name\n    delivery_address\n    items { product_name quantity unit_price }\n    driver {\n      id\n      name\n      vehicle_type\n      status\n      last_location { latitude longitude timestamp }\n    }\n    delivery {\n      id\n      status\n      driver_name\n      history {\n        event_type\n        created_at\n      }\n    }\n  }\n}",
+                "variables": "{\n  \"id\": \"{{order_id}}\"\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Recupere une commande avec son driver et sa delivery + son historique. Une requete HTTP au gateway, 3 appels gRPC en interne."
           }
         },
-        "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
-        "description": "Une seule requete HTTP qui recupere une commande, son livreur (driver-service via gRPC) et sa livraison + son historique (tracking-service via gRPC). Demonstration du power de GraphQL : eviter au client plusieurs round-trips."
-      }
+        {
+          "name": "Query orders (ListOrders)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ListOrders($customer_id: String, $status: String, $limit: Int) {\n  orders(customer_id: $customer_id, status: $status, limit: $limit) {\n    total\n    orders {\n      id\n      status\n      customer_name\n      total_amount\n      created_at\n    }\n  }\n}",
+                "variables": "{\n  \"customer_id\": \"cust-230\",\n  \"limit\": 10\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Liste les commandes avec filtres optionnels (customer_id, status). Retire les variables pour avoir toutes les commandes."
+          }
+        },
+        {
+          "name": "Query driver (GetDriver)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query GetDriver($id: ID!) {\n  driver(id: $id) {\n    id\n    name\n    phone\n    vehicle_type\n    status\n    current_order_id\n    last_location { latitude longitude speed_kmh heading_deg timestamp }\n    current_order {\n      id\n      status\n      customer_name\n      delivery_address\n    }\n  }\n}",
+                "variables": "{\n  \"id\": \"{{driver_id}}\"\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Recupere un livreur avec sa commande en cours grace au join Driver.current_order. Si le driver est AVAILABLE, current_order sera null."
+          }
+        },
+        {
+          "name": "Query availableDrivers",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query AvailableDrivers($limit: Int) {\n  availableDrivers(limit: $limit) {\n    total\n    drivers {\n      id\n      name\n      vehicle_type\n      last_location { latitude longitude }\n    }\n  }\n}",
+                "variables": "{\n  \"limit\": 20\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] }
+          }
+        },
+        {
+          "name": "Query delivery (GetDelivery)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query GetDelivery($id: ID!) {\n  delivery(id: $id) {\n    id\n    status\n    driver_name\n    delivery_address\n    order { id status customer_name total_amount }\n    driver { id name vehicle_type status }\n    history { event_type created_at event_data_json }\n  }\n}",
+                "variables": "{\n  \"id\": \"{{delivery_id}}\"\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Recupere une livraison avec son order, son driver et tout son historique d'events (delivery.created, delivery.assigned, delivery.picked-up, etc.)."
+          }
+        },
+        {
+          "name": "Query deliveries (InTransit, filter status)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query InTransitDeliveries {\n  deliveries(status: \"IN_TRANSIT\", limit: 20) {\n    total\n    deliveries {\n      id\n      delivery_address\n      driver {\n        id\n        name\n        last_location { latitude longitude }\n      }\n      order {\n        customer_name\n        total_amount\n      }\n    }\n  }\n}",
+                "variables": ""
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Use case dashboard 'livraisons en cours' : filtre par status IN_TRANSIT et joint driver + order."
+          }
+        },
+        {
+          "name": "Query deliveries (AllWithHistory)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query AllDeliveriesWithHistory {\n  deliveries(limit: 5) {\n    total\n    deliveries {\n      id\n      status\n      driver_name\n      history { event_type created_at }\n    }\n  }\n}",
+                "variables": ""
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Liste les 5 dernieres deliveries avec leur historique complet d'events. Pratique pour debugger la chaine Kafka."
+          }
+        },
+        {
+          "name": "Query deliveryByOrder",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query DeliveryByOrder($order_id: ID!) {\n  deliveryByOrder(order_id: $order_id) {\n    id\n    status\n    driver_name\n    delivery_address\n    history { event_type created_at }\n  }\n}",
+                "variables": "{\n  \"order_id\": \"{{order_id}}\"\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Retrouve la delivery a partir d'un order_id (sans connaitre le delivery_id). Utile cote client qui ne stocke que l'order_id."
+          }
+        }
+      ]
     },
     {
-      "name": "Query InTransitDeliveries",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "graphql",
-          "graphql": {
-            "query": "query InTransitDeliveries {\n  deliveries(status: \"IN_TRANSIT\", limit: 20) {\n    total\n    deliveries {\n      id\n      delivery_address\n      driver {\n        id\n        name\n        last_location { latitude longitude }\n      }\n      order {\n        customer_name\n        total_amount\n      }\n    }\n  }\n}",
-            "variables": ""
+      "name": "Mutations",
+      "item": [
+        {
+          "name": "Mutation createOrder",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CreateOrder($input: CreateOrderInput!) {\n  createOrder(input: $input) {\n    id\n    status\n    total_amount\n    customer_name\n    items { product_name quantity unit_price }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"customer_id\": \"cust-230\",\n    \"customer_name\": \"Med Abroud\",\n    \"delivery_address\": \"sahloul 5 rue de l'honneur\",\n    \"items\": [\n      { \"product_name\": \"Pizza Neptune\", \"quantity\": 2, \"unit_price\": 12.5 }\n    ]\n  }\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Cree une commande. La chaine Kafka declenche en arriere-plan : auto-assignation driver puis creation de la delivery."
           }
         },
-        "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
-        "description": "Liste des livraisons en cours avec leur driver et leur commande. Use case typique : dashboard 'livraisons en cours' qui montre tout d'un coup."
-      }
-    },
-    {
-      "name": "Query AllDeliveriesWithHistory",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "graphql",
-          "graphql": {
-            "query": "query AllDeliveriesWithHistory {\n  deliveries(limit: 5) {\n    total\n    deliveries {\n      id\n      status\n      driver_name\n      history { event_type created_at }\n    }\n  }\n}",
-            "variables": ""
+        {
+          "name": "Mutation cancelOrder",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CancelOrder($id: ID!, $reason: String) {\n  cancelOrder(id: $id, reason: $reason) {\n    id\n    status\n    updated_at\n  }\n}",
+                "variables": "{\n  \"id\": \"{{order_id}}\",\n  \"reason\": \"Client a change d'avis\"\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Annule une commande. Publie un event order.cancelled sur Kafka, ce qui annulera aussi la delivery cote tracking-service."
           }
         },
-        "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] }
-      }
-    },
-    {
-      "name": "Mutation CreateOrder",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "graphql",
-          "graphql": {
-            "query": "mutation CreateOrder($input: CreateOrderInput!) {\n  createOrder(input: $input) {\n    id\n    status\n    total_amount\n    customer_name\n    items { product_name quantity unit_price }\n  }\n}",
-            "variables": "{\n  \"input\": {\n    \"customer_id\": \"cust-230\",\n    \"customer_name\": \"Med Abroud\",\n    \"delivery_address\": \"sahloul 5 rue de l'honneur\",\n    \"items\": [\n      { \"product_name\": \"Pizza Neptune\", \"quantity\": 2, \"unit_price\": 12.5 }\n    ]\n  }\n}"
+        {
+          "name": "Mutation registerDriver",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation RegisterDriver($input: RegisterDriverInput!) {\n  registerDriver(input: $input) {\n    id\n    name\n    phone\n    vehicle_type\n    status\n    created_at\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"name\": \"Walid Mansouri\",\n    \"phone\": \"+216 99 888 777\",\n    \"vehicle_type\": \"moto\"\n  }\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Enregistre un nouveau livreur (status initial AVAILABLE)."
           }
         },
-        "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
-        "description": "Cree une commande via GraphQL. La chaine Kafka declenche en arriere-plan : auto-assignation driver puis creation de la delivery."
-      }
-    },
-    {
-      "name": "Mutation AdvanceDelivery",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "graphql",
-          "graphql": {
-            "query": "mutation AdvanceDelivery($id: ID!, $newStatus: String!) {\n  advanceDelivery(delivery_id: $id, new_status: $newStatus) {\n    id\n    status\n    driver_name\n    order {\n      id\n      status\n    }\n  }\n}",
-            "variables": "{\n  \"id\": \"{{delivery_id}}\",\n  \"newStatus\": \"PICKED_UP\"\n}"
+        {
+          "name": "Mutation updateDriverLocation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation UpdateLocation($input: UpdateLocationInput!) {\n  updateDriverLocation(input: $input) {\n    driver_id\n    latitude\n    longitude\n    speed_kmh\n    heading_deg\n    timestamp\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"driver_id\": \"{{driver_id}}\",\n    \"latitude\": 35.8245,\n    \"longitude\": 10.6347,\n    \"speed_kmh\": 32,\n    \"heading_deg\": 90\n  }\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Met a jour la position GPS d'un livreur. Publie sur Kafka driver.location-updated, repris par tracking-service."
           }
         },
-        "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
-        "description": "Avance la livraison (PICKED_UP / IN_TRANSIT / DELIVERED) et grace au resolver Delivery.order on recupere la commande dans la meme requete. Note : il faut quelques ms pour que la chaine Kafka delivery.events -> order.events propage le status cote order."
-      }
+        {
+          "name": "Mutation advanceDelivery",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation AdvanceDelivery($id: ID!, $newStatus: String!) {\n  advanceDelivery(delivery_id: $id, new_status: $newStatus) {\n    id\n    status\n    driver_name\n    order {\n      id\n      status\n    }\n  }\n}",
+                "variables": "{\n  \"id\": \"{{delivery_id}}\",\n  \"newStatus\": \"PICKED_UP\"\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Avance la livraison (PICKED_UP / IN_TRANSIT / DELIVERED). Grace au resolver Delivery.order on recupere la commande dans la meme requete. Quelques ms pour que la chaine Kafka delivery.events -> order.events propage le status cote order."
+          }
+        }
+      ]
     }
   ]
 }
