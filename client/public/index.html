@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Suivi livreur - SoA Livraison</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Suivi des livreurs en temps reel</h1>
+    <span id="connection-status" class="status off">Deconnecte</span>
+  </header>
+
+  <main>
+    <aside class="sidebar">
+      <section>
+        <h2>Livreur</h2>
+        <label for="driver-select">Selectionner un livreur :</label>
+        <select id="driver-select">
+          <option value="">-- Choisir --</option>
+        </select>
+        <div class="actions">
+          <button id="track-btn" disabled>Suivre</button>
+          <button id="stop-btn" disabled>Arreter</button>
+        </div>
+        <div class="actions">
+          <button id="refresh-drivers">Rafraichir la liste</button>
+          <button id="sim-btn" disabled>Demarrer simulateur</button>
+        </div>
+      </section>
+
+      <section id="driver-info" class="info-block hidden">
+        <h2>Infos livreur</h2>
+        <dl>
+          <dt>Nom</dt><dd id="info-name">-</dd>
+          <dt>Vehicule</dt><dd id="info-vehicle">-</dd>
+          <dt>Statut</dt><dd id="info-status">-</dd>
+          <dt>Position</dt><dd id="info-position">-</dd>
+          <dt>Vitesse</dt><dd id="info-speed">-</dd>
+          <dt>Maj</dt><dd id="info-timestamp">-</dd>
+        </dl>
+      </section>
+
+      <section id="order-info" class="info-block hidden">
+        <h2>Commande en cours</h2>
+        <dl>
+          <dt>Order</dt><dd id="order-id">-</dd>
+          <dt>Statut</dt><dd id="order-status">-</dd>
+          <dt>Client</dt><dd id="order-customer">-</dd>
+          <dt>Adresse</dt><dd id="order-address">-</dd>
+          <dt>Total</dt><dd id="order-total">-</dd>
+        </dl>
+      </section>
+
+      <section class="log-block">
+        <h2>Journal des updates</h2>
+        <ul id="log"></ul>
+      </section>
+    </aside>
+
+    <div id="map"></div>
+  </main>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script src="app.js"></script>
+</body>
+</html>

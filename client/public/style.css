@@ -1,0 +1,96 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #f4f5f7;
+  color: #222;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #1f2937;
+  color: #fff;
+}
+
+header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+
+.status {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.status.off { background: #6b7280; }
+.status.on { background: #10b981; }
+.status.err { background: #ef4444; }
+
+main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.sidebar {
+  width: 340px;
+  background: #fff;
+  border-right: 1px solid #e5e7eb;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.sidebar section { margin-bottom: 20px; }
+.sidebar h2 { font-size: 14px; margin: 0 0 8px; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; }
+.sidebar label { font-size: 13px; display: block; margin-bottom: 4px; color: #6b7280; }
+.sidebar select { width: 100%; padding: 6px 8px; font-size: 14px; }
+
+.actions { display: flex; gap: 8px; margin-top: 8px; }
+.actions button {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.actions button:hover:not(:disabled) { background: #f3f4f6; }
+.actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+#track-btn { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+#track-btn:hover:not(:disabled) { background: #2563eb; }
+#stop-btn { background: #ef4444; color: #fff; border-color: #ef4444; }
+#sim-btn { background: #f59e0b; color: #fff; border-color: #f59e0b; }
+#sim-btn.active { background: #d97706; }
+
+.info-block.hidden { display: none; }
+
+dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 4px 8px;
+  font-size: 13px;
+}
+dt { color: #6b7280; }
+dd { margin: 0; word-break: break-word; }
+
+.log-block { background: #f9fafb; padding: 8px; border-radius: 4px; }
+#log {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  font-size: 11px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+#log li { padding: 2px 0; border-bottom: 1px solid #e5e7eb; }
+
+#map { flex: 1; min-height: 0; }

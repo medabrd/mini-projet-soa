@@ -1,0 +1,13 @@
+{
+  "name": "soa-client",
+  "version": "1.0.0",
+  "description": "Client web minimal pour visualiser un livreur en temps reel sur une carte (Leaflet + SSE).",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "simulator": "node simulator.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
