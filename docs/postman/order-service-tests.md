@@ -195,7 +195,7 @@ Scénario de test complet (à exécuter dans cet ordre)
 Si tous ces appels passent dans l'ordre, le service est fonctionnel de bout en bout côté CRUD gRPC.
 
 
-Test du consumer Kafka (avancé, nécessite Kafka démarré)
+Test du consumer Kafka (nécessite Kafka démarré)
 ---------------------------------------------------------
 
 Pour vérifier que le consumer `delivery.events` met bien à jour le statut :

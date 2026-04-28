@@ -1,5 +1,6 @@
 const { initDatabase } = require('./src/db');
 const { startGrpcServer } = require('./src/grpc-server');
+const repo = require('./src/drivers-repo');
 const kafka = require('./src/kafka');
 
 const PORT = process.env.PORT || 50052;
@@ -7,6 +8,7 @@ const PORT = process.env.PORT || 50052;
 async function main() {
   console.log('Demarrage du service driver...');
   await initDatabase();
+  await repo.seedDefaultsIfEmpty();
   await kafka.connect();
   startGrpcServer(PORT);
 }

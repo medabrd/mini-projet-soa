@@ -24,10 +24,11 @@ Préparer une livraison pour tester
 
 Comme il n'y a pas de RPC pour créer une delivery, il faut en provoquer une via la chaîne Kafka :
 
-1. S'assurer qu'au moins un livreur est enregistré (`RegisterDriver` dans driver-service collection)
-2. `CreateOrder` dans order-service collection
-3. Attendre 1-2 secondes (le temps que les events traversent Kafka)
-4. Une delivery est créée automatiquement dans tracking-service avec status `ASSIGNED`
+1. `CreateOrder` dans order-service collection
+2. Attendre 1-2 secondes (le temps que les events traversent Kafka)
+3. Une delivery est créée automatiquement dans tracking-service avec status `ASSIGNED`
+
+Note : driver-service crée 3 livreurs par défaut au démarrage si sa base est vide (Karim, Sami, Anis), donc pas besoin de faire `RegisterDriver` à la main avant un `CreateOrder` — l'auto-assignation trouvera toujours un livreur disponible.
 
 Pour récupérer l'`id` de la delivery créée, faire un `ListDeliveries` (voir 2 ci-dessous).
 
@@ -160,17 +161,16 @@ Pousse l'état complet de la delivery au client à chaque changement de status. 
 Scénario de test complet
 -------------------------
 
-1. Vérifier qu'un driver existe : `RegisterDriver` dans driver-service collection si besoin
-2. Déclencher une commande : `CreateOrder` dans order-service collection
-3. Attendre 1-2 sec, puis `ListDeliveries` ici → la delivery doit apparaître avec status `ASSIGNED` (ou `PENDING_ASSIGNMENT` si le driver.assigned n'a pas encore été processé)
-4. Noter le `id` de la delivery
-5. `GetDelivery` avec cet id → confirme les données
-6. `WatchDelivery` dans un onglet séparé, laissé ouvert
-7. `AdvanceDeliveryStatus` → PICKED_UP, puis IN_TRANSIT, puis DELIVERED
-8. → Onglet WatchDelivery reçoit chaque update
-9. `GetDeliveryHistory` → on voit toute l'histoire (created, assigned, status-advanced * 3)
-10. (Bonus) Vérifier dans Kafka UI sur le topic `delivery.events` qu'on a bien 4 messages publiés (delivery.assigned, delivery.picked-up, delivery.in-transit, delivery.delivered)
-11. (Bonus) Vérifier dans order-service que la commande est passée elle aussi à PICKED_UP/IN_TRANSIT/DELIVERED grâce au consumer delivery.events
+1. Déclencher une commande : `CreateOrder` dans order-service collection (les drivers seed sont déjà créés au démarrage)
+2. Attendre 1-2 sec, puis `ListDeliveries` ici → la delivery doit apparaître avec status `ASSIGNED` (ou `PENDING_ASSIGNMENT` si le driver.assigned n'a pas encore été processé)
+3. Noter le `id` de la delivery
+4. `GetDelivery` avec cet id → confirme les données
+5. `WatchDelivery` dans un onglet séparé, laissé ouvert
+6. `AdvanceDeliveryStatus` → PICKED_UP, puis IN_TRANSIT, puis DELIVERED
+7. → Onglet WatchDelivery reçoit chaque update
+8. `GetDeliveryHistory` → on voit toute l'histoire (created, assigned, status-advanced * 3)
+9. (Bonus) Vérifier dans Kafka UI sur le topic `delivery.events` qu'on a bien 4 messages publiés (delivery.assigned, delivery.picked-up, delivery.in-transit, delivery.delivered)
+10. (Bonus) Vérifier dans order-service que la commande est passée elle aussi à PICKED_UP/IN_TRANSIT/DELIVERED grâce au consumer delivery.events
 
 
 Vérification de la chaîne complète
