@@ -2,8 +2,10 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>REST playground - SoA Livraison</title>
+  <title>SoA Livraison - Client / Admin / Livreur</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="playground.css" />
 </head>
@@ -12,168 +14,194 @@
     <h1>SoA Livraison</h1>
     <nav class="nav-tools">
       <a class="nav-link" href="/">Tracking live</a>
-      <a class="nav-link active" href="/rest.html">REST playground</a>
+      <a class="nav-link active" href="/rest.html">Demo metier</a>
       <a class="nav-link" href="/graphql.html">GraphQL playground</a>
     </nav>
     <span id="gateway-status" class="status off">?</span>
   </header>
 
-  <section class="vars-bar">
-    <div class="vars-grid">
-      <div class="var-cell">
-        <label>driver_id</label>
-        <code id="var-driver_id">(vide)</code>
-        <button class="var-copy" data-key="driver_id" title="Copier">copy</button>
-      </div>
-      <div class="var-cell">
-        <label>order_id</label>
-        <code id="var-order_id">(vide)</code>
-        <button class="var-copy" data-key="order_id" title="Copier">copy</button>
-      </div>
-      <div class="var-cell">
-        <label>order2_id</label>
-        <code id="var-order2_id">(vide)</code>
-        <button class="var-copy" data-key="order2_id" title="Copier">copy</button>
-      </div>
-      <div class="var-cell">
-        <label>delivery_id</label>
-        <code id="var-delivery_id">(vide)</code>
-        <button class="var-copy" data-key="delivery_id" title="Copier">copy</button>
-      </div>
-    </div>
-    <button id="vars-reset" class="vars-reset" title="Vider tous les ids stockes">Reset variables</button>
-  </section>
-
   <nav class="sub-nav">
-    <button class="sub-tab active" data-tab="endpoints">Tous les endpoints</button>
-    <button class="sub-tab" data-tab="create-orders">Creer des commandes</button>
-    <button class="sub-tab" data-tab="create-drivers">Creer des livreurs</button>
+    <button class="sub-tab active" data-tab="client">Client</button>
+    <button class="sub-tab" data-tab="admin">Admin</button>
+    <button class="sub-tab" data-tab="livreur">Livreur</button>
   </nav>
 
   <main class="pg-main">
-    <div class="tab-pane active" data-tab="endpoints">
-      <p class="pg-intro">
-        16 endpoints REST exposes par l'API Gateway (port 3000). Les ids sont auto-extraits des reponses et reinjectes
-        dans les champs marques <code>auto</code>. Pour un test propre, on suppose la base vide au depart : commence par
-        <strong>POST /api/drivers</strong> puis <strong>POST /api/orders</strong>.
-      </p>
 
-      <section id="section-health" class="pg-section">
-        <h2>Health</h2>
-        <div class="cards" id="cards-health"></div>
-      </section>
-
-      <section id="section-drivers" class="pg-section">
-        <h2>Drivers</h2>
-        <div class="cards" id="cards-drivers"></div>
-      </section>
-
-      <section id="section-orders" class="pg-section">
-        <h2>Orders</h2>
-        <div class="cards" id="cards-orders"></div>
-      </section>
-
-      <section id="section-deliveries" class="pg-section">
-        <h2>Deliveries</h2>
-        <div class="cards" id="cards-deliveries"></div>
-      </section>
-    </div>
-
-    <div class="tab-pane" data-tab="create-orders">
-      <p class="pg-intro">
-        Creer une ou plusieurs commandes via <code>POST /api/orders</code>. Chaque commande declenche
-        <code>order.placed</code> sur Kafka. Si aucun driver dispo, l'order est mise en file d'attente cote driver-service.
-      </p>
-
-      <div class="creator-panel">
-        <h3>Une commande personnalisee</h3>
-        <div class="fields">
-          <div class="field"><label>customer_id</label><input id="o-customer_id" value="cust-001" /></div>
-          <div class="field"><label>customer_name</label><input id="o-customer_name" value="Med Abroud" /></div>
-          <div class="field full"><label>delivery_address</label><input id="o-delivery_address" value="Sahloul 5 rue de l'honneur" /></div>
-          <div class="field full"><label>items (JSON)</label><textarea id="o-items" rows="5">[
+    <!-- ============ CLIENT ============ -->
+    <div class="tab-pane active" data-tab="client">
+      <div class="role-grid">
+        <div class="role-col">
+          <div class="role-card">
+            <h3>Passer une commande</h3>
+            <div class="fields">
+              <div class="field full">
+                <label>Votre nom</label>
+                <input id="cl-name" value="Med Abroud" />
+              </div>
+              <div class="field full">
+                <label>Adresse de livraison <span class="auto-tag">hardcodee</span></label>
+                <input id="cl-address" value="Sahloul, 5 rue de l'honneur" readonly />
+              </div>
+              <div class="field full">
+                <label>Articles (JSON)</label>
+                <textarea id="cl-items" rows="5">[
   { "product_name": "Pizza Neptune", "quantity": 2, "unit_price": 12.5 },
   { "product_name": "Sabrine 1L", "quantity": 1, "unit_price": 3 }
-]</textarea></div>
-        </div>
-        <div class="card-actions">
-          <button id="o-create-one" class="btn-send">Creer 1 commande</button>
-        </div>
-      </div>
+]</textarea>
+              </div>
+            </div>
+            <div class="card-actions">
+              <button id="cl-submit" class="btn-send">Passer commande</button>
+              <button id="cl-reset" class="btn-send btn-close">Nouvelle commande</button>
+            </div>
+          </div>
 
-      <div class="creator-panel">
-        <h3>Lot de commandes (donnees aleatoires)</h3>
-        <p class="desc">Genere N commandes avec des clients/items aleatoires pour tester la file d'attente, l'auto-assignation, etc.</p>
-        <div class="fields">
-          <div class="field"><label>nombre de commandes</label><input id="o-batch-n" type="number" value="3" min="1" max="50" /></div>
-          <div class="field"><label>delai entre chaque (ms)</label><input id="o-batch-delay" type="number" value="50" min="0" max="5000" /></div>
-        </div>
-        <div class="card-actions">
-          <button id="o-create-batch" class="btn-send">Creer le lot</button>
-          <span id="o-batch-status" class="card-status">idle</span>
-        </div>
-      </div>
+          <div class="role-card hidden" id="cl-order-card">
+            <h3>Ma commande</h3>
+            <dl class="order-info">
+              <dt>Numero</dt><dd id="cl-order-id">-</dd>
+              <dt>Total</dt><dd id="cl-order-total">-</dd>
+              <dt>Livreur</dt><dd id="cl-order-driver">en attente d'attribution...</dd>
+            </dl>
 
-      <div class="creator-log">
-        <div class="creator-log-head">
-          <h3>Historique des creations</h3>
-          <button id="o-log-clear" class="btn-send btn-close">Vider</button>
-        </div>
-        <table class="log-table">
-          <thead><tr><th>#</th><th>id</th><th>status initial</th><th>customer</th><th>total</th><th>cree a</th></tr></thead>
-          <tbody id="o-log-body"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="tab-pane" data-tab="create-drivers">
-      <p class="pg-intro">
-        Creer un ou plusieurs livreurs via <code>POST /api/drivers</code>. Si la file d'attente contient des orders en
-        attente, chaque nouveau driver prend immediatement la 1ere order disponible.
-      </p>
-
-      <div class="creator-panel">
-        <h3>Un livreur personnalise</h3>
-        <div class="fields">
-          <div class="field"><label>name</label><input id="d-name" value="Karim Ben Salah" /></div>
-          <div class="field"><label>phone</label><input id="d-phone" value="+216 22 123 456" /></div>
-          <div class="field"><label>vehicle_type</label>
-            <select id="d-vehicle_type">
-              <option>scooter</option><option>moto</option><option>velo</option><option>voiture</option>
-            </select>
+            <div class="status-timeline" id="cl-timeline">
+              <div class="step" data-status="PENDING"><span class="dot"></span><span class="label">Recue</span></div>
+              <div class="step" data-status="ASSIGNED"><span class="dot"></span><span class="label">Livreur assigne</span></div>
+              <div class="step" data-status="PICKED_UP"><span class="dot"></span><span class="label">Recuperee</span></div>
+              <div class="step" data-status="IN_TRANSIT"><span class="dot"></span><span class="label">En route</span></div>
+              <div class="step" data-status="DELIVERED"><span class="dot"></span><span class="label">Livree</span></div>
+            </div>
+            <div id="cl-cancel-banner" class="cancel-banner hidden">Cette commande a ete annulee</div>
           </div>
         </div>
-        <div class="card-actions">
-          <button id="d-create-one" class="btn-send">Creer 1 livreur</button>
-        </div>
-      </div>
 
-      <div class="creator-panel">
-        <h3>Lot de livreurs (donnees aleatoires)</h3>
-        <p class="desc">Genere N livreurs avec des prenoms tunisiens aleatoires. Pratique pour vider une file d'attente d'orders.</p>
-        <div class="fields">
-          <div class="field"><label>nombre de livreurs</label><input id="d-batch-n" type="number" value="3" min="1" max="50" /></div>
-          <div class="field"><label>delai entre chaque (ms)</label><input id="d-batch-delay" type="number" value="200" min="0" max="5000" /></div>
+        <div class="role-col">
+          <div class="role-card">
+            <h3>Position du livreur en temps reel</h3>
+            <div id="cl-map" class="mini-map"></div>
+            <p id="cl-map-hint" class="map-hint">La carte s'active des qu'un livreur prend votre commande.</p>
+          </div>
         </div>
-        <div class="card-actions">
-          <button id="d-create-batch" class="btn-send">Creer le lot</button>
-          <span id="d-batch-status" class="card-status">idle</span>
-        </div>
-      </div>
-
-      <div class="creator-log">
-        <div class="creator-log-head">
-          <h3>Historique des creations</h3>
-          <button id="d-log-clear" class="btn-send btn-close">Vider</button>
-        </div>
-        <table class="log-table">
-          <thead><tr><th>#</th><th>id</th><th>name</th><th>vehicule</th><th>status</th><th>cree a</th></tr></thead>
-          <tbody id="d-log-body"></tbody>
-        </table>
       </div>
     </div>
+
+    <!-- ============ ADMIN ============ -->
+    <div class="tab-pane" data-tab="admin">
+      <nav class="sub-sub-nav">
+        <button class="sub-sub-tab active" data-sub="livreurs">Livreurs</button>
+        <button class="sub-sub-tab" data-sub="commandes">Commandes</button>
+      </nav>
+
+      <div class="sub-sub-pane active" data-sub="livreurs">
+        <div class="role-card">
+          <h3>Ajouter un livreur</h3>
+          <div class="fields">
+            <div class="field"><label>Nom</label><input id="ad-name" value="Karim Ben Salah" /></div>
+            <div class="field"><label>Telephone</label><input id="ad-phone" value="+216 22 123 456" /></div>
+            <div class="field"><label>Vehicule</label>
+              <select id="ad-vehicle">
+                <option>scooter</option><option>moto</option><option>velo</option><option>voiture</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button id="ad-add" class="btn-send">Ajouter</button>
+            <span id="ad-add-status" class="card-status">idle</span>
+          </div>
+        </div>
+
+        <div class="role-card">
+          <div class="role-card-head">
+            <h3>Liste des livreurs</h3>
+            <button id="ad-refresh-drivers" class="btn-send btn-close">Rafraichir</button>
+          </div>
+          <p class="desc">Auto-rafraichi toutes les 2s. Cliquer sur un livreur BUSY ouvre l'interface Livreur avec sa commande chargee.</p>
+          <table class="log-table">
+            <thead><tr><th>Nom</th><th>Telephone</th><th>Vehicule</th><th>Statut</th><th>Commande</th></tr></thead>
+            <tbody id="ad-drivers-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sub-sub-pane" data-sub="commandes">
+        <div class="role-card">
+          <div class="role-card-head">
+            <h3>Toutes les commandes</h3>
+            <button id="ad-refresh-orders" class="btn-send btn-close">Rafraichir</button>
+          </div>
+          <div class="filters">
+            <div class="field">
+              <label>Statut</label>
+              <select id="ad-filter-status">
+                <option value="">(tous)</option>
+                <option>PENDING</option><option>ASSIGNED</option><option>PICKED_UP</option>
+                <option>IN_TRANSIT</option><option>DELIVERED</option><option>CANCELLED</option>
+              </select>
+            </div>
+            <div class="field"><label>customer_id</label><input id="ad-filter-customer" placeholder="ex: cust-001" /></div>
+            <div class="field"><label>Recherche libre</label><input id="ad-filter-search" placeholder="nom client, id..." /></div>
+          </div>
+          <table class="log-table">
+            <thead><tr><th>id</th><th>Client</th><th>Articles</th><th>Total</th><th>Statut</th><th>Livreur</th><th>Cree</th><th>Action</th></tr></thead>
+            <tbody id="ad-orders-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ LIVREUR ============ -->
+    <div class="tab-pane" data-tab="livreur">
+      <div class="role-card">
+        <h3>Selectionner un livreur</h3>
+        <div class="fields">
+          <div class="field full">
+            <label>Livreur (BUSY de preference, sinon AVAILABLE sans commande)</label>
+            <select id="lv-select"><option value="">-- Choisir --</option></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="role-card hidden" id="lv-current-card">
+        <h3>Commande en cours</h3>
+        <dl class="order-info">
+          <dt>Livreur</dt><dd id="lv-driver-name">-</dd>
+          <dt>Vehicule</dt><dd id="lv-driver-vehicle">-</dd>
+          <dt>Statut driver</dt><dd id="lv-driver-status">-</dd>
+          <dt>Commande</dt><dd id="lv-order-id">-</dd>
+          <dt>Client</dt><dd id="lv-order-customer">-</dd>
+          <dt>Adresse livraison</dt><dd id="lv-order-address">-</dd>
+          <dt>Statut livraison</dt><dd id="lv-delivery-status">-</dd>
+        </dl>
+
+        <div class="role-card-head"><h3>Actions livreur</h3></div>
+        <div class="lv-actions">
+          <div class="lv-actions-row">
+            <button id="lv-go-pickup" class="btn-send btn-move">Aller recuperer la commande</button>
+            <button id="lv-pickup" class="btn-send">J'ai recupere</button>
+          </div>
+          <div class="lv-actions-row">
+            <button id="lv-go-deliver" class="btn-send btn-move">Aller livrer</button>
+            <button id="lv-transit" class="btn-send">Je suis en route</button>
+          </div>
+          <div class="lv-actions-row">
+            <button id="lv-deliver" class="btn-send btn-success">C'est livre</button>
+            <span id="lv-action-status" class="card-status">idle</span>
+          </div>
+        </div>
+
+        <div id="lv-map" class="mini-map"></div>
+      </div>
+
+      <div class="role-card hidden" id="lv-no-order-card">
+        <p class="desc">Ce livreur est AVAILABLE et n'a pas de commande en cours. Passe une commande cote Client pour qu'il en recoive une.</p>
+      </div>
+    </div>
+
   </main>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="rest.js"></script>
 </body>
 </html>

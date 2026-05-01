@@ -1,656 +1,586 @@
-// REST playground : 16 cartes (1 par endpoint du gateway) avec UI, chainage des ids
-// et 2 cartes SSE (Open/Close stream).
-//
-// Chaque carte est decrite par un objet et rendue dynamiquement. Les ids
-// extraits des reponses (driver_id, order_id, ...) sont stockes dans `vars`
-// et reinjectes dans les champs marques 'auto:true' avant chaque Send.
+// 3 interfaces metier : Client (passe une commande), Admin (drivers + commandes),
+// Livreur (joue le role du livreur, deplace sa position en mode hardcode).
 
 const GW = 'http://localhost:3000';
-const VAR_KEYS = ['driver_id', 'order_id', 'order2_id', 'delivery_id'];
-const vars = Object.fromEntries(VAR_KEYS.map(k => [k, '']));
 
+const PICKUP = { lat: 35.823, lng: 10.629, label: 'Restaurant Pizza Neptune' };
+const DELIVERY = { lat: 35.828, lng: 10.640, label: 'Sahloul, 5 rue de l\'honneur' };
+const DEFAULT_START = { lat: 35.825, lng: 10.634 };
+
+// ============ Helpers ============
 function escapeHtml(s) {
   return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-function getByPath(obj, p) {
-  if (!obj || !p) return undefined;
-  const parts = p.split('.');
-  let cur = obj;
-  for (const k of parts) { if (cur == null) return undefined; cur = /^\d+$/.test(k) ? cur[Number(k)] : cur[k]; }
-  return cur;
-}
-
-// ============ Cartes ============
-const CARDS = [
-  // ---- HEALTH ----
-  {
-    section: 'health', id: 'health',
-    method: 'GET', path: '/health',
-    desc: 'Ping de base. Reponse : { status: "ok", service: "gateway" }.',
-  },
-
-  // ---- DRIVERS ----
-  {
-    section: 'drivers', id: 'register-driver',
-    method: 'POST', path: '/api/drivers',
-    name: 'RegisterDriver',
-    desc: 'Enregistre un nouveau livreur. Si la file d\'attente contient des orders en attente, ce driver est immediatement assigne a la 1ere.',
-    fields: [
-      { name: 'name', label: 'name', default: 'Karim Ben Salah' },
-      { name: 'phone', label: 'phone', default: '+216 22 123 456' },
-      { name: 'vehicle_type', label: 'vehicle_type', default: 'scooter' },
-    ],
-    buildBody: (i) => ({ name: i.name, phone: i.phone, vehicle_type: i.vehicle_type }),
-    extract: { driver_id: 'id' },
-  },
-  {
-    section: 'drivers', id: 'list-available',
-    method: 'GET', path: '/api/drivers/available',
-    name: 'ListAvailableDrivers',
-    desc: 'Liste les livreurs en status AVAILABLE.',
-    fields: [{ name: 'limit', label: 'limit (query)', default: '20' }],
-    buildPath: (i) => `/api/drivers/available?limit=${encodeURIComponent(i.limit)}`,
-  },
-  {
-    section: 'drivers', id: 'get-driver',
-    method: 'GET', path: '/api/drivers/:id',
-    name: 'GetDriver',
-    desc: 'Recupere un livreur par son id.',
-    fields: [{ name: 'driver_id', label: 'driver_id', autoVar: 'driver_id' }],
-    buildPath: (i) => `/api/drivers/${encodeURIComponent(i.driver_id)}`,
-  },
-  {
-    section: 'drivers', id: 'update-location',
-    method: 'PATCH', path: '/api/drivers/:id/location',
-    name: 'UpdateLocation',
-    desc: 'Met a jour la position GPS du livreur. Publie driver.location-updated sur Kafka.',
-    fields: [
-      { name: 'driver_id', label: 'driver_id', autoVar: 'driver_id', cls: 'full' },
-      { name: 'latitude', label: 'latitude', default: '35.8245' },
-      { name: 'longitude', label: 'longitude', default: '10.6347' },
-      { name: 'speed_kmh', label: 'speed_kmh', default: '30' },
-      { name: 'heading_deg', label: 'heading_deg', default: '90' },
-    ],
-    buildPath: (i) => `/api/drivers/${encodeURIComponent(i.driver_id)}/location`,
-    buildBody: (i) => ({
-      latitude: Number(i.latitude), longitude: Number(i.longitude),
-      speed_kmh: Number(i.speed_kmh), heading_deg: Number(i.heading_deg),
-    }),
-  },
-  {
-    section: 'drivers', id: 'stream-driver', sse: true,
-    method: 'SSE', path: '/api/drivers/:id/stream',
-    name: 'StreamDriverLocation',
-    desc: 'Flux SSE qui pousse chaque mise a jour de position en temps reel. Pour declencher des events, lancer cette carte puis utiliser PATCH .../location sur le meme driver dans une autre carte.',
-    fields: [{ name: 'driver_id', label: 'driver_id', autoVar: 'driver_id', cls: 'full' }],
-    buildPath: (i) => `/api/drivers/${encodeURIComponent(i.driver_id)}/stream`,
-  },
-
-  // ---- ORDERS ----
-  {
-    section: 'orders', id: 'create-order',
-    method: 'POST', path: '/api/orders',
-    name: 'CreateOrder',
-    desc: 'Cree une commande. Publie order.placed -> driver-service tente l\'assignation. Si aucun driver dispo, l\'order est mise en file d\'attente.',
-    fields: [
-      { name: 'customer_id', label: 'customer_id', default: 'cust-001', cls: 'full' },
-      { name: 'customer_name', label: 'customer_name', default: 'Med Abroud' },
-      { name: 'delivery_address', label: 'delivery_address', default: 'Sahloul 5 rue de l\'honneur' },
-      { name: 'items_json', label: 'items (JSON)', cls: 'full', textarea: true, default: JSON.stringify([
-        { product_name: 'Pizza Neptune', quantity: 2, unit_price: 12.5 },
-        { product_name: 'Sabrine 1L', quantity: 1, unit_price: 3 },
-      ], null, 2) },
-    ],
-    buildBody: (i) => ({
-      customer_id: i.customer_id, customer_name: i.customer_name,
-      delivery_address: i.delivery_address,
-      items: JSON.parse(i.items_json),
-    }),
-    extract: { order_id: 'id' },
-  },
-  {
-    section: 'orders', id: 'get-order',
-    method: 'GET', path: '/api/orders/:id',
-    name: 'GetOrder',
-    desc: 'Recupere une commande. Apres POST /api/orders, attendre 1-2 secondes puis re-lancer cette carte pour voir le status passer a ASSIGNED.',
-    fields: [{ name: 'order_id', label: 'order_id', autoVar: 'order_id', cls: 'full' }],
-    buildPath: (i) => `/api/orders/${encodeURIComponent(i.order_id)}`,
-  },
-  {
-    section: 'orders', id: 'list-orders',
-    method: 'GET', path: '/api/orders',
-    name: 'ListOrders',
-    desc: 'Liste les commandes avec filtres optionnels (customer_id, status).',
-    fields: [
-      { name: 'customer_id', label: 'customer_id (query, optionnel)', default: '' },
-      { name: 'status', label: 'status (query, optionnel)', default: '' },
-      { name: 'limit', label: 'limit', default: '10' },
-    ],
-    buildPath: (i) => {
-      const p = new URLSearchParams();
-      if (i.customer_id) p.set('customer_id', i.customer_id);
-      if (i.status) p.set('status', i.status);
-      p.set('limit', i.limit);
-      return '/api/orders?' + p.toString();
-    },
-  },
-  {
-    section: 'orders', id: 'update-order-status',
-    method: 'PATCH', path: '/api/orders/:id/status',
-    name: 'UpdateOrderStatus (manuel)',
-    desc: 'Override manuel du statut. Rarement utilise : la chaine Kafka gere normalement les transitions automatiquement.',
-    fields: [
-      { name: 'order_id', label: 'order_id', autoVar: 'order_id', cls: 'full' },
-      { name: 'status', label: 'status', default: 'IN_TRANSIT' },
-      { name: 'assigned_driver_id', label: 'assigned_driver_id (optionnel)', autoVar: 'driver_id' },
-    ],
-    buildPath: (i) => `/api/orders/${encodeURIComponent(i.order_id)}/status`,
-    buildBody: (i) => {
-      const b = { status: i.status };
-      if (i.assigned_driver_id) b.assigned_driver_id = i.assigned_driver_id;
-      return b;
-    },
-  },
-  {
-    section: 'orders', id: 'cancel-order',
-    method: 'POST', path: '/api/orders/:id/cancel',
-    name: 'CancelOrder',
-    desc: 'Annule la commande. Publie order.cancelled -> tracking-service met la delivery a CANCELLED.',
-    fields: [
-      { name: 'order_id', label: 'order_id', autoVar: 'order_id', cls: 'full' },
-      { name: 'reason', label: 'reason', default: 'Client a change d\'avis', cls: 'full' },
-    ],
-    buildPath: (i) => `/api/orders/${encodeURIComponent(i.order_id)}/cancel`,
-    buildBody: (i) => ({ reason: i.reason }),
-  },
-
-  // ---- DELIVERIES ----
-  {
-    section: 'deliveries', id: 'list-deliveries',
-    method: 'GET', path: '/api/deliveries',
-    name: 'ListDeliveries',
-    desc: 'Liste les livraisons. Astuce : le bouton "Use latest by order_id" extrait la delivery liee a votre order_id courant.',
-    fields: [
-      { name: 'status', label: 'status (optionnel)', default: '' },
-      { name: 'driver_id', label: 'driver_id (optionnel)', default: '' },
-      { name: 'limit', label: 'limit', default: '20' },
-    ],
-    buildPath: (i) => {
-      const p = new URLSearchParams();
-      if (i.status) p.set('status', i.status);
-      if (i.driver_id) p.set('driver_id', i.driver_id);
-      p.set('limit', i.limit);
-      return '/api/deliveries?' + p.toString();
-    },
-    extractFn: (resp) => {
-      if (!resp || !resp.deliveries) return {};
-      const matching = resp.deliveries.find(d => d.order_id === vars.order_id);
-      return matching ? { delivery_id: matching.id } : {};
-    },
-  },
-  {
-    section: 'deliveries', id: 'get-delivery',
-    method: 'GET', path: '/api/deliveries/:id',
-    name: 'GetDelivery',
-    desc: 'Recupere une livraison precise.',
-    fields: [{ name: 'delivery_id', label: 'delivery_id', autoVar: 'delivery_id', cls: 'full' }],
-    buildPath: (i) => `/api/deliveries/${encodeURIComponent(i.delivery_id)}`,
-  },
-  {
-    section: 'deliveries', id: 'get-delivery-history',
-    method: 'GET', path: '/api/deliveries/:id/history',
-    name: 'GetDeliveryHistory',
-    desc: 'Historique des events de la livraison (delivery.created, delivery.assigned, delivery.picked-up, ...).',
-    fields: [{ name: 'delivery_id', label: 'delivery_id', autoVar: 'delivery_id', cls: 'full' }],
-    buildPath: (i) => `/api/deliveries/${encodeURIComponent(i.delivery_id)}/history`,
-  },
-  {
-    section: 'deliveries', id: 'advance-delivery',
-    method: 'PATCH', path: '/api/deliveries/:id/status',
-    name: 'AdvanceDeliveryStatus',
-    desc: 'Avance la livraison. Publie delivery.<status> sur Kafka -> order-service consume et met a jour l\'order.',
-    fields: [
-      { name: 'delivery_id', label: 'delivery_id', autoVar: 'delivery_id', cls: 'full' },
-      { name: 'new_status', label: 'new_status', kind: 'select', options: ['PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'], default: 'PICKED_UP' },
-    ],
-    buildPath: (i) => `/api/deliveries/${encodeURIComponent(i.delivery_id)}/status`,
-    buildBody: (i) => ({ new_status: i.new_status }),
-  },
-  {
-    section: 'deliveries', id: 'watch-delivery', sse: true,
-    method: 'SSE', path: '/api/deliveries/:id/watch',
-    name: 'WatchDelivery',
-    desc: 'Flux SSE qui pousse chaque changement de la livraison. Lancer cette carte puis utiliser AdvanceDeliveryStatus dans une autre carte pour voir arriver les events.',
-    fields: [{ name: 'delivery_id', label: 'delivery_id', autoVar: 'delivery_id', cls: 'full' }],
-    buildPath: (i) => `/api/deliveries/${encodeURIComponent(i.delivery_id)}/watch`,
-  },
-];
-
-// ============ Variables panel ============
-function refreshVarsUi() {
-  for (const k of VAR_KEYS) {
-    const el = document.getElementById('var-' + k);
-    if (!el) continue;
-    el.textContent = vars[k] || '(vide)';
-    el.classList.toggle('empty', !vars[k]);
-  }
-}
-function setVar(key, value) {
-  if (!VAR_KEYS.includes(key) || !value) return;
-  vars[key] = value;
-  refreshVarsUi();
-  // pousse la valeur dans tous les champs autoVar correspondants
-  document.querySelectorAll(`input[data-auto-var="${key}"]`).forEach(inp => {
-    if (!inp.dataset.userEdited) inp.value = value;
-  });
-}
-document.getElementById('vars-reset').addEventListener('click', () => {
-  for (const k of VAR_KEYS) vars[k] = '';
-  refreshVarsUi();
-  document.querySelectorAll('input[data-auto-var]').forEach(i => { i.value = ''; delete i.dataset.userEdited; });
-});
-document.querySelectorAll('.var-copy').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const k = btn.dataset.key;
-    if (!vars[k]) return;
-    navigator.clipboard.writeText(vars[k]);
-    btn.textContent = 'ok';
-    setTimeout(() => (btn.textContent = 'copy'), 800);
-  });
-});
-
-// ============ Health check au demarrage ============
-async function checkGatewayHealth() {
-  const el = document.getElementById('gateway-status');
-  try {
-    const r = await fetch(`${GW}/health`);
-    el.className = 'status on';
-    el.textContent = r.ok ? 'Gateway OK' : 'Gateway KO';
-  } catch (e) {
-    el.className = 'status err';
-    el.textContent = 'Gateway hors ligne';
-  }
-}
-
-// ============ Render des cartes ============
-function renderCard(card) {
-  const tpl = document.createElement('div');
-  tpl.className = 'card collapsed';
-  tpl.dataset.cardId = card.id;
-  const fieldsHtml = (card.fields || []).map(f => {
-    const auto = f.autoVar ? `<span class="auto-tag">auto:${f.autoVar}</span>` : '';
-    let input;
-    if (f.kind === 'select') {
-      input = `<select name="${f.name}">${f.options.map(o => `<option value="${o}"${o === f.default ? ' selected' : ''}>${o}</option>`).join('')}</select>`;
-    } else if (f.textarea) {
-      input = `<textarea name="${f.name}" rows="6">${escapeHtml(f.default || '')}</textarea>`;
-    } else {
-      const val = f.autoVar ? (vars[f.autoVar] || '') : (f.default || '');
-      input = `<input type="text" name="${f.name}" value="${escapeHtml(val)}"${f.autoVar ? ` data-auto-var="${f.autoVar}"` : ''} />`;
-    }
-    return `<div class="field ${f.cls || ''}"><label>${f.label}${auto}</label>${input}</div>`;
-  }).join('');
-
-  const actions = card.sse
-    ? `<button class="btn-send btn-open">Open stream</button>
-       <button class="btn-send btn-close" disabled>Close</button>
-       <span class="card-status">idle</span>`
-    : `<button class="btn-send">Send</button><span class="card-status">idle</span>`;
-
-  tpl.innerHTML = `
-    <div class="card-head">
-      <span class="method ${card.method}">${card.method}</span>
-      <span class="path">${card.path}</span>
-      <span class="name">${card.name || ''}</span>
-      <span class="chev">[+]</span>
-    </div>
-    <div class="card-body">
-      ${card.desc ? `<p class="desc">${card.desc}</p>` : ''}
-      <div class="fields">${fieldsHtml}</div>
-      <div class="card-actions">${actions}</div>
-      ${card.sse ? `<div class="stream-log" data-empty="1"><span class="ev"><span class="t">--:--:--</span>(stream ferme)</span></div>`
-                 : `<div class="resp empty">(reponse a venir)</div>`}
-    </div>`;
-  // toggles
-  tpl.querySelector('.card-head').addEventListener('click', () => {
-    tpl.classList.toggle('collapsed');
-    tpl.querySelector('.chev').textContent = tpl.classList.contains('collapsed') ? '[+]' : '[-]';
-  });
-  // edited inputs are no longer auto-overwritten
-  tpl.querySelectorAll('input[data-auto-var]').forEach(inp => {
-    inp.addEventListener('input', () => { inp.dataset.userEdited = '1'; });
-  });
-
-  // Bind action(s)
-  if (card.sse) {
-    tpl.querySelector('.btn-open').addEventListener('click', () => openSse(card, tpl));
-    tpl.querySelector('.btn-close').addEventListener('click', () => closeSse(tpl));
-  } else {
-    tpl.querySelector('.btn-send').addEventListener('click', () => runCard(card, tpl));
-  }
-  return tpl;
-}
-
-function collectInputs(card, tpl) {
-  const i = {};
-  (card.fields || []).forEach(f => {
-    const el = tpl.querySelector(`[name="${f.name}"]`);
-    i[f.name] = el ? el.value : '';
-  });
-  return i;
-}
-
-async function runCard(card, tpl) {
-  const input = collectInputs(card, tpl);
-  const path = card.buildPath ? card.buildPath(input) : card.path;
-  const body = card.buildBody ? card.buildBody(input) : null;
-  const status = tpl.querySelector('.card-status');
-  const resp = tpl.querySelector('.resp');
-  status.className = 'card-status running';
-  status.textContent = 'running';
-  resp.className = 'resp';
-  resp.textContent = '...';
-  try {
-    const opts = { method: card.method, headers: { 'Content-Type': 'application/json' } };
-    if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(GW + path, opts);
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : null;
-    if (!res.ok) {
-      resp.className = 'resp err';
-      resp.textContent = `HTTP ${res.status}\n\n${JSON.stringify(data, null, 2)}`;
-      status.className = 'card-status fail';
-      status.textContent = `HTTP ${res.status}`;
-      return;
-    }
-    resp.textContent = JSON.stringify(data, null, 2);
-    status.className = 'card-status ok';
-    status.textContent = `${res.status} OK`;
-    // Extraction
-    if (card.extract) {
-      for (const [k, p] of Object.entries(card.extract)) {
-        const v = getByPath(data, p);
-        if (v) setVar(k, v);
-      }
-    }
-    if (card.extractFn) {
-      const out = card.extractFn(data) || {};
-      for (const [k, v] of Object.entries(out)) setVar(k, v);
-    }
-  } catch (e) {
-    status.className = 'card-status fail';
-    status.textContent = 'erreur';
-    resp.className = 'resp err';
-    resp.textContent = e.message;
-  }
-}
-
-// ============ SSE handling ============
-const openStreams = new WeakMap();
-function nowHHMMSS() { return new Date().toLocaleTimeString(); }
-
-function openSse(card, tpl) {
-  const input = collectInputs(card, tpl);
-  const path = card.buildPath(input);
-  const url = GW + path;
-  const logEl = tpl.querySelector('.stream-log');
-  const status = tpl.querySelector('.card-status');
-  const openBtn = tpl.querySelector('.btn-open');
-  const closeBtn = tpl.querySelector('.btn-close');
-
-  closeSse(tpl);
-  logEl.innerHTML = '';
-  logEl.removeAttribute('data-empty');
-  appendStreamLine(logEl, `Connexion: ${url}`);
-
-  const es = new EventSource(url);
-  openStreams.set(tpl, es);
-  status.className = 'card-status streaming';
-  status.textContent = 'streaming';
-  openBtn.disabled = true;
-  closeBtn.disabled = false;
-
-  es.onmessage = (ev) => appendStreamLine(logEl, ev.data);
-  es.onerror = () => {
-    appendStreamLine(logEl, '[erreur: SSE coupe (id invalide ou serveur indisponible)]');
-    status.className = 'card-status fail';
-    status.textContent = 'erreur SSE';
-    closeSse(tpl);
-  };
-}
-
-function closeSse(tpl) {
-  const es = openStreams.get(tpl);
-  if (es) { es.close(); openStreams.delete(tpl); }
-  tpl.querySelector('.btn-open').disabled = false;
-  tpl.querySelector('.btn-close').disabled = true;
-  const s = tpl.querySelector('.card-status');
-  if (s.textContent === 'streaming') {
-    s.className = 'card-status';
-    s.textContent = 'closed';
-  }
-}
-
-function appendStreamLine(logEl, text) {
-  const li = document.createElement('span');
-  li.className = 'ev';
-  li.innerHTML = `<span class="t">${nowHHMMSS()}</span>${escapeHtml(text)}`;
-  logEl.appendChild(li);
-  logEl.appendChild(document.createElement('br'));
-  logEl.scrollTop = logEl.scrollHeight;
-}
-
-// ============ Sub-nav (onglets) ============
-function setupTabs() {
-  const tabs = document.querySelectorAll('.sub-tab');
-  const panes = document.querySelectorAll('.tab-pane');
-  tabs.forEach(t => t.addEventListener('click', () => {
-    const target = t.dataset.tab;
-    tabs.forEach(x => x.classList.toggle('active', x === t));
-    panes.forEach(p => p.classList.toggle('active', p.dataset.tab === target));
-  }));
-}
-
-// ============ Creators (commandes & livreurs en lot) ============
-const TUNISIAN_FIRST = ['Karim', 'Sami', 'Anis', 'Walid', 'Mehdi', 'Yassine', 'Hamza', 'Salah', 'Bilel', 'Aymen', 'Oussama', 'Riadh', 'Fares', 'Mounir', 'Imed'];
-const TUNISIAN_LAST = ['Ben Salah', 'Hadj', 'Trabelsi', 'Mansouri', 'Bouzid', 'Khelifi', 'Gharbi', 'Sassi', 'Ferchichi', 'Mejri'];
-const VEHICLES = ['scooter', 'moto', 'velo', 'voiture'];
-const ADDRESSES = ['Sahloul 5 rue de l\'honneur', 'avenue Habib Bourguiba, Sousse', 'rue de Carthage, Hammam Sousse', 'cite el Riadh, Sousse', 'avenue Mohamed V'];
-const PRODUCTS = [
-  { product_name: 'Pizza Neptune', unit_price: 12.5 },
-  { product_name: 'Burger maison', unit_price: 9 },
-  { product_name: 'Plat du jour', unit_price: 15 },
-  { product_name: 'Sabrine 1L', unit_price: 3 },
-  { product_name: 'Cafe espresso', unit_price: 2.5 },
-  { product_name: 'Tacos poulet', unit_price: 11 },
-];
-
-function rand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-
-function randomOrderPayload(i) {
-  const itemsCount = randInt(1, 3);
-  const items = Array.from({ length: itemsCount }, () => {
-    const p = rand(PRODUCTS);
-    return { product_name: p.product_name, quantity: randInt(1, 3), unit_price: p.unit_price };
-  });
-  return {
-    customer_id: `cust-${String(i).padStart(3, '0')}`,
-    customer_name: `${rand(TUNISIAN_FIRST)} ${rand(TUNISIAN_LAST)}`,
-    delivery_address: rand(ADDRESSES),
-    items,
-  };
-}
-
-function randomDriverPayload() {
-  return {
-    name: `${rand(TUNISIAN_FIRST)} ${rand(TUNISIAN_LAST)}`,
-    phone: `+216 ${randInt(20, 99)} ${randInt(100, 999)} ${randInt(100, 999)}`,
-    vehicle_type: rand(VEHICLES),
-  };
-}
-
-function appendOrderLog(idx, order, err) {
-  const tbody = document.getElementById('o-log-body');
-  const tr = document.createElement('tr');
-  if (err) {
-    tr.innerHTML = `<td>${idx}</td><td colspan="4" style="color:#991b1b">FAIL ${escapeHtml(err)}</td><td>${new Date().toLocaleTimeString()}</td>`;
-  } else {
-    const total = (order.items || []).reduce((s, it) => s + it.quantity * it.unit_price, 0);
-    tr.innerHTML = `
-      <td>${idx}</td>
-      <td title="${order.id}">${order.id.slice(0, 8)}...</td>
-      <td><span class="status-pill ${order.status}">${order.status}</span></td>
-      <td>${escapeHtml(order.customer_name)}</td>
-      <td>${total.toFixed(2)} TND</td>
-      <td>${new Date().toLocaleTimeString()}</td>`;
-  }
-  tbody.prepend(tr);
-}
-
-function appendDriverLog(idx, driver, err) {
-  const tbody = document.getElementById('d-log-body');
-  const tr = document.createElement('tr');
-  if (err) {
-    tr.innerHTML = `<td>${idx}</td><td colspan="4" style="color:#991b1b">FAIL ${escapeHtml(err)}</td><td>${new Date().toLocaleTimeString()}</td>`;
-  } else {
-    tr.innerHTML = `
-      <td>${idx}</td>
-      <td title="${driver.id}">${driver.id.slice(0, 8)}...</td>
-      <td>${escapeHtml(driver.name)}</td>
-      <td>${escapeHtml(driver.vehicle_type)}</td>
-      <td><span class="status-pill ${driver.status}">${driver.status}</span></td>
-      <td>${new Date().toLocaleTimeString()}</td>`;
-  }
-  tbody.prepend(tr);
-}
-
-async function postJson(path, body) {
-  const r = await fetch(GW + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+async function callGw(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(GW + path, opts);
   const text = await r.text();
   const data = text ? JSON.parse(text) : null;
   if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
   return data;
 }
+const wait = ms => new Promise(r => setTimeout(r, ms));
 
-function setupOrderCreator() {
-  let orderIdx = 0;
+const STATUS_ORDER = ['PENDING', 'ASSIGNED', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED'];
 
-  document.getElementById('o-create-one').addEventListener('click', async () => {
-    orderIdx++;
-    try {
-      const body = {
-        customer_id: document.getElementById('o-customer_id').value,
-        customer_name: document.getElementById('o-customer_name').value,
-        delivery_address: document.getElementById('o-delivery_address').value,
-        items: JSON.parse(document.getElementById('o-items').value),
-      };
-      const o = await postJson('/api/orders', body);
-      setVar('order_id', o.id);
-      appendOrderLog(orderIdx, o);
-    } catch (e) {
-      appendOrderLog(orderIdx, null, e.message);
-    }
-  });
-
-  document.getElementById('o-create-batch').addEventListener('click', async () => {
-    const n = Math.max(1, Math.min(50, Number(document.getElementById('o-batch-n').value) || 1));
-    const delay = Math.max(0, Math.min(5000, Number(document.getElementById('o-batch-delay').value) || 0));
-    const status = document.getElementById('o-batch-status');
-    const btn = document.getElementById('o-create-batch');
-    btn.disabled = true;
-    for (let i = 0; i < n; i++) {
-      orderIdx++;
-      status.className = 'card-status running';
-      status.textContent = `${i + 1}/${n}...`;
-      try {
-        const o = await postJson('/api/orders', randomOrderPayload(orderIdx));
-        if (i === n - 1) setVar('order_id', o.id);
-        appendOrderLog(orderIdx, o);
-      } catch (e) {
-        appendOrderLog(orderIdx, null, e.message);
-      }
-      if (delay > 0 && i < n - 1) await new Promise(r => setTimeout(r, delay));
-    }
-    status.className = 'card-status ok';
-    status.textContent = `${n} crees`;
-    btn.disabled = false;
-  });
-
-  document.getElementById('o-log-clear').addEventListener('click', () => {
-    document.getElementById('o-log-body').innerHTML = '';
-    orderIdx = 0;
-  });
-}
-
-function setupDriverCreator() {
-  let driverIdx = 0;
-
-  document.getElementById('d-create-one').addEventListener('click', async () => {
-    driverIdx++;
-    try {
-      const body = {
-        name: document.getElementById('d-name').value,
-        phone: document.getElementById('d-phone').value,
-        vehicle_type: document.getElementById('d-vehicle_type').value,
-      };
-      const d = await postJson('/api/drivers', body);
-      setVar('driver_id', d.id);
-      appendDriverLog(driverIdx, d);
-    } catch (e) {
-      appendDriverLog(driverIdx, null, e.message);
-    }
-  });
-
-  document.getElementById('d-create-batch').addEventListener('click', async () => {
-    const n = Math.max(1, Math.min(50, Number(document.getElementById('d-batch-n').value) || 1));
-    const delay = Math.max(0, Math.min(5000, Number(document.getElementById('d-batch-delay').value) || 0));
-    const status = document.getElementById('d-batch-status');
-    const btn = document.getElementById('d-create-batch');
-    btn.disabled = true;
-    for (let i = 0; i < n; i++) {
-      driverIdx++;
-      status.className = 'card-status running';
-      status.textContent = `${i + 1}/${n}...`;
-      try {
-        const d = await postJson('/api/drivers', randomDriverPayload());
-        if (i === n - 1) setVar('driver_id', d.id);
-        appendDriverLog(driverIdx, d);
-      } catch (e) {
-        appendDriverLog(driverIdx, null, e.message);
-      }
-      if (delay > 0 && i < n - 1) await new Promise(r => setTimeout(r, delay));
-    }
-    status.className = 'card-status ok';
-    status.textContent = `${n} crees`;
-    btn.disabled = false;
-  });
-
-  document.getElementById('d-log-clear').addEventListener('click', () => {
-    document.getElementById('d-log-body').innerHTML = '';
-    driverIdx = 0;
-  });
-}
-
-// ============ Init ============
-function init() {
-  refreshVarsUi();
-  for (const card of CARDS) {
-    const container = document.getElementById('cards-' + card.section);
-    if (container) container.appendChild(renderCard(card));
+// ============ Gateway status (header pill) ============
+async function checkHealth() {
+  const el = document.getElementById('gateway-status');
+  try {
+    const r = await fetch(`${GW}/health`);
+    el.className = 'status on';
+    el.textContent = r.ok ? 'Gateway OK' : 'KO';
+  } catch (e) {
+    el.className = 'status err';
+    el.textContent = 'hors ligne';
   }
+}
+
+// ============ Onglets ============
+function setupTabs() {
+  document.querySelectorAll('.sub-tab').forEach(t => {
+    t.addEventListener('click', () => switchMainTab(t.dataset.tab));
+  });
+  document.querySelectorAll('.sub-sub-tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.sub-sub-tab').forEach(x => x.classList.toggle('active', x === t));
+      document.querySelectorAll('.sub-sub-pane').forEach(p => p.classList.toggle('active', p.dataset.sub === t.dataset.sub));
+    });
+  });
+}
+function switchMainTab(target) {
+  document.querySelectorAll('.sub-tab').forEach(x => x.classList.toggle('active', x.dataset.tab === target));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.dataset.tab === target));
+  // Hook : ressize les cartes Leaflet quand l'onglet devient visible
+  setTimeout(() => {
+    if (clientMap) clientMap.invalidateSize();
+    if (livreurMap) livreurMap.invalidateSize();
+  }, 50);
+}
+
+// ============================================================
+// ============ INTERFACE CLIENT ============
+// ============================================================
+const clientState = {
+  orderId: null,
+  deliveryId: null,
+  driverId: null,
+  watchEs: null,
+  streamEs: null,
+};
+let clientMap = null;
+let clientMarker = null;
+let clientPickupMarker = null;
+let clientDeliveryMarker = null;
+let clientTrail = null;
+const clientTrailPoints = [];
+
+function ensureClientMap() {
+  if (clientMap) return;
+  clientMap = L.map('cl-map').setView([(PICKUP.lat + DELIVERY.lat) / 2, (PICKUP.lng + DELIVERY.lng) / 2], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: 'OSM', maxZoom: 19 }).addTo(clientMap);
+  clientPickupMarker = L.circleMarker([PICKUP.lat, PICKUP.lng], { color: '#f59e0b', radius: 8, fillOpacity: 0.7 })
+    .bindTooltip(PICKUP.label, { permanent: true, direction: 'top', offset: [0, -6] }).addTo(clientMap);
+  clientDeliveryMarker = L.circleMarker([DELIVERY.lat, DELIVERY.lng], { color: '#10b981', radius: 8, fillOpacity: 0.7 })
+    .bindTooltip(DELIVERY.label, { permanent: true, direction: 'top', offset: [0, -6] }).addTo(clientMap);
+}
+
+function renderClientTimeline(status) {
+  const tl = document.getElementById('cl-timeline');
+  tl.classList.toggle('cancelled', status === 'CANCELLED');
+  const idx = STATUS_ORDER.indexOf(status);
+  tl.querySelectorAll('.step').forEach((step, i) => {
+    step.classList.remove('done', 'current');
+    if (status === 'CANCELLED') return;
+    if (idx < 0) return;
+    if (i < idx) step.classList.add('done');
+    else if (i === idx) step.classList.add('current');
+  });
+  document.getElementById('cl-cancel-banner').classList.toggle('hidden', status !== 'CANCELLED');
+}
+
+async function submitClientOrder() {
+  closeClientStreams();
+  let items;
+  try {
+    items = JSON.parse(document.getElementById('cl-items').value);
+  } catch (e) {
+    alert('JSON des articles invalide : ' + e.message);
+    return;
+  }
+  const body = {
+    customer_id: 'client-ui-' + Date.now(),
+    customer_name: document.getElementById('cl-name').value,
+    delivery_address: document.getElementById('cl-address').value,
+    items,
+  };
+  try {
+    const order = await callGw('POST', '/api/orders', body);
+    clientState.orderId = order.id;
+    const total = (order.items || []).reduce((s, i) => s + i.quantity * i.unit_price, 0);
+    document.getElementById('cl-order-id').textContent = order.id;
+    document.getElementById('cl-order-total').textContent = total.toFixed(2) + ' TND';
+    document.getElementById('cl-order-driver').textContent = 'en attente d\'attribution...';
+    document.getElementById('cl-order-card').classList.remove('hidden');
+    renderClientTimeline(order.status);
+    pollUntilDeliveryFound(order.id);
+  } catch (e) {
+    alert('Erreur creation : ' + e.message);
+  }
+}
+
+async function pollUntilDeliveryFound(orderId, tries = 0) {
+  if (tries > 20) return;
+  try {
+    const list = await callGw('GET', '/api/deliveries?limit=100');
+    const d = list.deliveries.find(x => x.order_id === orderId);
+    if (d) {
+      clientState.deliveryId = d.id;
+      openClientWatch(d.id);
+      if (d.driver_id) attachClientDriver(d.driver_id, d.driver_name);
+      return;
+    }
+  } catch (_) {}
+  setTimeout(() => pollUntilDeliveryFound(orderId, tries + 1), 500);
+}
+
+function openClientWatch(deliveryId) {
+  if (clientState.watchEs) clientState.watchEs.close();
+  clientState.watchEs = new EventSource(`${GW}/api/deliveries/${deliveryId}/watch`);
+  clientState.watchEs.onmessage = (ev) => {
+    const d = JSON.parse(ev.data);
+    // Mapping statut Delivery -> statut Order (timeline) :
+    // PENDING_ASSIGNMENT -> PENDING, autres = identiques
+    const mapped = d.status === 'PENDING_ASSIGNMENT' ? 'PENDING' : d.status;
+    renderClientTimeline(mapped);
+    if (d.driver_id && d.driver_id !== clientState.driverId) {
+      attachClientDriver(d.driver_id, d.driver_name);
+    }
+  };
+}
+
+function attachClientDriver(driverId, driverName) {
+  clientState.driverId = driverId;
+  document.getElementById('cl-order-driver').textContent = driverName || driverId.slice(0, 8);
+  ensureClientMap();
+  document.getElementById('cl-map-hint').textContent = `Suivi de ${driverName || 'livreur'} en temps reel.`;
+  if (clientState.streamEs) clientState.streamEs.close();
+  clientState.streamEs = new EventSource(`${GW}/api/drivers/${driverId}/stream`);
+  clientState.streamEs.onmessage = (ev) => {
+    const loc = JSON.parse(ev.data);
+    moveClientMarker(loc.latitude, loc.longitude);
+  };
+}
+
+function moveClientMarker(lat, lng) {
+  if (!clientMap) ensureClientMap();
+  const pt = [lat, lng];
+  if (!clientMarker) {
+    clientMarker = L.marker(pt).addTo(clientMap).bindTooltip('Livreur', { permanent: true, direction: 'top', offset: [-15, -10] });
+  } else {
+    clientMarker.setLatLng(pt);
+  }
+  clientTrailPoints.push(pt);
+  if (clientTrailPoints.length > 200) clientTrailPoints.shift();
+  if (!clientTrail) {
+    clientTrail = L.polyline(clientTrailPoints, { color: '#3b82f6', weight: 3 }).addTo(clientMap);
+  } else {
+    clientTrail.setLatLngs(clientTrailPoints);
+  }
+  clientMap.panTo(pt);
+}
+
+function closeClientStreams() {
+  if (clientState.watchEs) clientState.watchEs.close();
+  if (clientState.streamEs) clientState.streamEs.close();
+  clientState.watchEs = clientState.streamEs = null;
+}
+
+function resetClient() {
+  closeClientStreams();
+  clientState.orderId = clientState.deliveryId = clientState.driverId = null;
+  document.getElementById('cl-order-card').classList.add('hidden');
+  if (clientMarker) { clientMap.removeLayer(clientMarker); clientMarker = null; }
+  if (clientTrail) { clientMap.removeLayer(clientTrail); clientTrail = null; clientTrailPoints.length = 0; }
+}
+
+function setupClient() {
+  document.getElementById('cl-submit').addEventListener('click', submitClientOrder);
+  document.getElementById('cl-reset').addEventListener('click', resetClient);
+}
+
+// ============================================================
+// ============ INTERFACE ADMIN ============
+// ============================================================
+let adminDriversTimer = null;
+let adminOrdersTimer = null;
+
+async function refreshDrivers() {
+  try {
+    // Pour avoir TOUS les drivers (pas juste AVAILABLE), on combine 2 sources :
+    // - GET /api/drivers/available pour les AVAILABLE
+    // - GET /api/deliveries pour deduire les drivers BUSY (via la jointure)
+    // Plus simple : on liste les available, et pour les BUSY on prend les drivers
+    // referenced dans les deliveries non-finales.
+    const [avail, deliveries] = await Promise.all([
+      callGw('GET', '/api/drivers/available?limit=100'),
+      callGw('GET', '/api/deliveries?limit=200'),
+    ]);
+    // ids deja vus dans available
+    const seen = new Map();
+    for (const d of avail.drivers || []) seen.set(d.id, d);
+    // Drivers BUSY : on les recupere via GetDriver pour chaque driver_id distinct des deliveries en cours
+    const busyIds = new Set();
+    const orderByDriver = new Map();
+    for (const dl of deliveries.deliveries || []) {
+      if (dl.driver_id && !['DELIVERED', 'CANCELLED'].includes(dl.status)) {
+        busyIds.add(dl.driver_id);
+        orderByDriver.set(dl.driver_id, dl);
+      }
+    }
+    const busyDrivers = await Promise.all([...busyIds].map(id => callGw('GET', `/api/drivers/${id}`).catch(() => null)));
+    for (const d of busyDrivers) if (d) seen.set(d.id, d);
+
+    const tbody = document.getElementById('ad-drivers-body');
+    tbody.innerHTML = '';
+    const sorted = [...seen.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    if (sorted.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:#9ca3af;text-align:center">(aucun livreur — utilise le formulaire ci-dessus)</td></tr>';
+      return;
+    }
+    for (const d of sorted) {
+      const tr = document.createElement('tr');
+      const orderInfo = orderByDriver.get(d.id);
+      tr.className = d.status === 'BUSY' ? 'clickable-row' : '';
+      tr.innerHTML = `
+        <td>${escapeHtml(d.name)}</td>
+        <td>${escapeHtml(d.phone)}</td>
+        <td>${escapeHtml(d.vehicle_type)}</td>
+        <td><span class="status-pill ${d.status}">${d.status}</span></td>
+        <td>${orderInfo ? `<code title="${orderInfo.order_id}">${orderInfo.order_id.slice(0, 8)}...</code> <span class="status-pill ${orderInfo.status}">${orderInfo.status}</span>` : '-'}</td>`;
+      if (d.status === 'BUSY') {
+        tr.addEventListener('click', () => {
+          switchMainTab('livreur');
+          loadLivreurFor(d.id);
+        });
+      }
+      tbody.appendChild(tr);
+    }
+  } catch (e) {
+    console.error('refreshDrivers:', e);
+  }
+}
+
+async function refreshOrders() {
+  try {
+    const status = document.getElementById('ad-filter-status').value;
+    const customer = document.getElementById('ad-filter-customer').value.trim();
+    const search = document.getElementById('ad-filter-search').value.trim().toLowerCase();
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (customer) params.set('customer_id', customer);
+    params.set('limit', '100');
+    const list = await callGw('GET', '/api/orders?' + params.toString());
+    let orders = list.orders || [];
+    if (search) {
+      orders = orders.filter(o =>
+        (o.id || '').toLowerCase().includes(search) ||
+        (o.customer_name || '').toLowerCase().includes(search) ||
+        (o.customer_id || '').toLowerCase().includes(search)
+      );
+    }
+    const tbody = document.getElementById('ad-orders-body');
+    tbody.innerHTML = '';
+    if (orders.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="color:#9ca3af;text-align:center">(aucune commande)</td></tr>';
+      return;
+    }
+    for (const o of orders) {
+      const tr = document.createElement('tr');
+      const cancellable = !['DELIVERED', 'CANCELLED'].includes(o.status);
+      const itemsCount = (o.items || []).length;
+      tr.innerHTML = `
+        <td><code title="${o.id}">${o.id.slice(0, 8)}...</code></td>
+        <td>${escapeHtml(o.customer_name)}<br><small style="color:#9ca3af">${escapeHtml(o.customer_id)}</small></td>
+        <td>${itemsCount} article(s)</td>
+        <td>${(o.total_amount || 0).toFixed(2)} TND</td>
+        <td><span class="status-pill ${o.status}">${o.status}</span></td>
+        <td>${o.assigned_driver_id ? `<code>${o.assigned_driver_id.slice(0, 8)}...</code>` : '-'}</td>
+        <td>${new Date(o.created_at).toLocaleTimeString()}</td>
+        <td><button class="row-action-btn" ${cancellable ? '' : 'disabled'} data-cancel-id="${o.id}">Annuler</button></td>`;
+      const btn = tr.querySelector('button[data-cancel-id]');
+      if (btn && cancellable) {
+        btn.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          if (!confirm('Annuler la commande ' + o.id.slice(0, 8) + ' ?')) return;
+          try {
+            await callGw('POST', `/api/orders/${o.id}/cancel`, { reason: 'Annule par admin' });
+            refreshOrders();
+            refreshDrivers();
+          } catch (e) {
+            alert('Echec annulation : ' + e.message);
+          }
+        });
+      }
+      tbody.appendChild(tr);
+    }
+  } catch (e) {
+    console.error('refreshOrders:', e);
+  }
+}
+
+async function addAdminDriver() {
+  const status = document.getElementById('ad-add-status');
+  status.className = 'card-status running';
+  status.textContent = 'envoi...';
+  try {
+    const body = {
+      name: document.getElementById('ad-name').value,
+      phone: document.getElementById('ad-phone').value,
+      vehicle_type: document.getElementById('ad-vehicle').value,
+    };
+    const d = await callGw('POST', '/api/drivers', body);
+    // Position initiale aleatoire autour du centre Sousse pour que le marker apparaisse
+    const lat = DEFAULT_START.lat + (Math.random() - 0.5) * 0.01;
+    const lng = DEFAULT_START.lng + (Math.random() - 0.5) * 0.01;
+    await callGw('PATCH', `/api/drivers/${d.id}/location`, { latitude: lat, longitude: lng, speed_kmh: 0, heading_deg: 0 });
+    status.className = 'card-status ok';
+    status.textContent = 'OK : ' + d.name;
+    await refreshDrivers();
+    await refreshLivreurDropdown();
+  } catch (e) {
+    status.className = 'card-status fail';
+    status.textContent = 'KO : ' + e.message;
+  }
+}
+
+function setupAdmin() {
+  document.getElementById('ad-add').addEventListener('click', addAdminDriver);
+  document.getElementById('ad-refresh-drivers').addEventListener('click', refreshDrivers);
+  document.getElementById('ad-refresh-orders').addEventListener('click', refreshOrders);
+  ['ad-filter-status', 'ad-filter-customer', 'ad-filter-search'].forEach(id =>
+    document.getElementById(id).addEventListener('input', refreshOrders));
+  adminDriversTimer = setInterval(refreshDrivers, 2000);
+  adminOrdersTimer = setInterval(refreshOrders, 2000);
+  refreshDrivers();
+  refreshOrders();
+}
+
+// ============================================================
+// ============ INTERFACE LIVREUR ============
+// ============================================================
+const livreurState = { driverId: null, driver: null, delivery: null, animTimer: null };
+let livreurMap = null;
+let livreurMarker = null;
+let livreurPickupMarker = null;
+let livreurDeliveryMarker = null;
+let livreurTrail = null;
+const livreurTrailPoints = [];
+
+function ensureLivreurMap() {
+  if (livreurMap) return;
+  livreurMap = L.map('lv-map').setView([(PICKUP.lat + DELIVERY.lat) / 2, (PICKUP.lng + DELIVERY.lng) / 2], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: 'OSM', maxZoom: 19 }).addTo(livreurMap);
+  livreurPickupMarker = L.circleMarker([PICKUP.lat, PICKUP.lng], { color: '#f59e0b', radius: 8, fillOpacity: 0.7 })
+    .bindTooltip('Pickup', { permanent: true, direction: 'top', offset: [0, -6] }).addTo(livreurMap);
+  livreurDeliveryMarker = L.circleMarker([DELIVERY.lat, DELIVERY.lng], { color: '#10b981', radius: 8, fillOpacity: 0.7 })
+    .bindTooltip('Livraison', { permanent: true, direction: 'top', offset: [0, -6] }).addTo(livreurMap);
+}
+
+async function refreshLivreurDropdown() {
+  try {
+    const [avail, deliveries] = await Promise.all([
+      callGw('GET', '/api/drivers/available?limit=100'),
+      callGw('GET', '/api/deliveries?limit=200'),
+    ]);
+    const seen = new Map();
+    for (const d of avail.drivers || []) seen.set(d.id, d);
+    const busyIds = new Set();
+    for (const dl of deliveries.deliveries || []) {
+      if (dl.driver_id && !['DELIVERED', 'CANCELLED'].includes(dl.status)) busyIds.add(dl.driver_id);
+    }
+    const busy = await Promise.all([...busyIds].map(id => callGw('GET', `/api/drivers/${id}`).catch(() => null)));
+    for (const d of busy) if (d) seen.set(d.id, d);
+    const sel = document.getElementById('lv-select');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">-- Choisir --</option>';
+    [...seen.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = `${d.name} [${d.status}] - ${d.vehicle_type}`;
+        sel.appendChild(opt);
+      });
+    if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
+  } catch (e) {
+    console.error('refreshLivreurDropdown:', e);
+  }
+}
+
+async function loadLivreurFor(driverId) {
+  livreurState.driverId = driverId;
+  document.getElementById('lv-select').value = driverId;
+  await renderLivreurPanel();
+}
+
+async function renderLivreurPanel() {
+  const id = livreurState.driverId;
+  const noOrder = document.getElementById('lv-no-order-card');
+  const current = document.getElementById('lv-current-card');
+  if (!id) {
+    noOrder.classList.add('hidden');
+    current.classList.add('hidden');
+    return;
+  }
+  try {
+    const driver = await callGw('GET', `/api/drivers/${id}`);
+    livreurState.driver = driver;
+    if (driver.status !== 'BUSY' || !driver.current_order_id) {
+      current.classList.add('hidden');
+      noOrder.classList.remove('hidden');
+      return;
+    }
+    // Recuperer la delivery liee
+    const deliveries = await callGw('GET', '/api/deliveries?limit=200');
+    const delivery = (deliveries.deliveries || []).find(x => x.driver_id === id && !['DELIVERED', 'CANCELLED'].includes(x.status));
+    if (!delivery) {
+      // Pas de delivery active : driver vient peut-etre d'etre cancel
+      current.classList.add('hidden');
+      noOrder.classList.remove('hidden');
+      return;
+    }
+    livreurState.delivery = delivery;
+    document.getElementById('lv-driver-name').textContent = driver.name;
+    document.getElementById('lv-driver-vehicle').textContent = driver.vehicle_type;
+    document.getElementById('lv-driver-status').innerHTML = `<span class="status-pill ${driver.status}">${driver.status}</span>`;
+    document.getElementById('lv-order-id').textContent = delivery.order_id;
+    document.getElementById('lv-order-customer').textContent = delivery.customer_name || '-';
+    document.getElementById('lv-order-address').textContent = delivery.delivery_address || '-';
+    document.getElementById('lv-delivery-status').innerHTML = `<span class="status-pill ${delivery.status}">${delivery.status}</span>`;
+    noOrder.classList.add('hidden');
+    current.classList.remove('hidden');
+    ensureLivreurMap();
+    if (driver.last_location) updateLivreurMarker(driver.last_location.latitude, driver.last_location.longitude);
+    updateLivreurButtons(delivery.status);
+  } catch (e) {
+    alert('Erreur chargement livreur : ' + e.message);
+  }
+}
+
+function updateLivreurButtons(deliveryStatus) {
+  const map = {
+    'lv-go-pickup': deliveryStatus === 'ASSIGNED',
+    'lv-pickup':    deliveryStatus === 'ASSIGNED',
+    'lv-go-deliver': deliveryStatus === 'PICKED_UP',
+    'lv-transit':   deliveryStatus === 'PICKED_UP',
+    'lv-deliver':   deliveryStatus === 'IN_TRANSIT',
+  };
+  for (const [id, enabled] of Object.entries(map)) {
+    document.getElementById(id).disabled = !enabled;
+  }
+}
+
+function updateLivreurMarker(lat, lng) {
+  if (!livreurMap) ensureLivreurMap();
+  const pt = [lat, lng];
+  if (!livreurMarker) {
+    livreurMarker = L.marker(pt).addTo(livreurMap).bindTooltip('Moi', { permanent: true, direction: 'top', offset: [-15, -10] });
+  } else {
+    livreurMarker.setLatLng(pt);
+  }
+  livreurTrailPoints.push(pt);
+  if (livreurTrailPoints.length > 200) livreurTrailPoints.shift();
+  if (!livreurTrail) {
+    livreurTrail = L.polyline(livreurTrailPoints, { color: '#f59e0b', weight: 3 }).addTo(livreurMap);
+  } else {
+    livreurTrail.setLatLngs(livreurTrailPoints);
+  }
+  livreurMap.panTo(pt);
+}
+
+// Animation : interpolation lineaire entre 2 points sur 4 secondes,
+// 16 frames -> 250ms par frame -> 16 PATCH /location au gateway.
+async function animateMove(target) {
+  if (livreurState.animTimer) return;
+  const id = livreurState.driverId;
+  const driver = livreurState.driver;
+  const start = driver.last_location
+    ? { lat: driver.last_location.latitude, lng: driver.last_location.longitude }
+    : { lat: DEFAULT_START.lat, lng: DEFAULT_START.lng };
+  const FRAMES = 16;
+  const status = document.getElementById('lv-action-status');
+  status.className = 'card-status running';
+  status.textContent = 'deplacement...';
+
+  for (let i = 1; i <= FRAMES; i++) {
+    const t = i / FRAMES;
+    const lat = start.lat + (target.lat - start.lat) * t;
+    const lng = start.lng + (target.lng - start.lng) * t;
+    try {
+      await callGw('PATCH', `/api/drivers/${id}/location`, {
+        latitude: lat, longitude: lng,
+        speed_kmh: 25 + Math.random() * 10,
+        heading_deg: Math.random() * 360,
+      });
+      updateLivreurMarker(lat, lng);
+    } catch (e) {
+      status.className = 'card-status fail';
+      status.textContent = e.message;
+      return;
+    }
+    await wait(250);
+  }
+  livreurState.driver.last_location = { latitude: target.lat, longitude: target.lng };
+  status.className = 'card-status ok';
+  status.textContent = 'arrive a ' + target.label;
+}
+
+async function advanceLivreurStatus(newStatus) {
+  const status = document.getElementById('lv-action-status');
+  status.className = 'card-status running';
+  status.textContent = `passage a ${newStatus}...`;
+  try {
+    await callGw('PATCH', `/api/deliveries/${livreurState.delivery.id}/status`, { new_status: newStatus });
+    status.className = 'card-status ok';
+    status.textContent = newStatus;
+    await renderLivreurPanel();
+    if (newStatus === 'DELIVERED') {
+      // Le driver est libere automatiquement cote backend (Kafka).
+      // On rafraichit la dropdown apres un petit delai.
+      setTimeout(refreshLivreurDropdown, 1000);
+    }
+  } catch (e) {
+    status.className = 'card-status fail';
+    status.textContent = e.message;
+  }
+}
+
+function setupLivreur() {
+  document.getElementById('lv-select').addEventListener('change', (ev) => {
+    if (ev.target.value) loadLivreurFor(ev.target.value);
+    else renderLivreurPanel();
+  });
+  document.getElementById('lv-go-pickup').addEventListener('click', () => animateMove(PICKUP));
+  document.getElementById('lv-go-deliver').addEventListener('click', () => animateMove(DELIVERY));
+  document.getElementById('lv-pickup').addEventListener('click', () => advanceLivreurStatus('PICKED_UP'));
+  document.getElementById('lv-transit').addEventListener('click', () => advanceLivreurStatus('IN_TRANSIT'));
+  document.getElementById('lv-deliver').addEventListener('click', () => advanceLivreurStatus('DELIVERED'));
+  refreshLivreurDropdown();
+  setInterval(refreshLivreurDropdown, 5000);
+}
+
+// ============================================================
+// ============ Init ============
+// ============================================================
+function init() {
   setupTabs();
-  setupOrderCreator();
-  setupDriverCreator();
-  checkGatewayHealth();
-  setInterval(checkGatewayHealth, 10000);
+  setupClient();
+  setupAdmin();
+  setupLivreur();
+  checkHealth();
+  setInterval(checkHealth, 10000);
 }
 init();
