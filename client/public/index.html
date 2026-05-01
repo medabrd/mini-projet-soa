@@ -2,82 +2,274 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Suivi livreur - SoA Livraison</title>
+  <title>SoA Livraison</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
-  />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header>
-    <h1>SoA Livraison</h1>
-    <nav class="nav-tools">
-      <a class="nav-link active" href="/">Tracking live</a>
-      <a class="nav-link" href="/rest.html">REST playground</a>
-      <a class="nav-link" href="/graphql.html">GraphQL playground</a>
-    </nav>
-    <span id="connection-status" class="status off">Deconnecte</span>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo">🚚</span>
+      <div class="brand-text">
+        <span class="brand-title">SoA Livraison</span>
+        <span class="brand-sub">Demonstration metier temps reel</span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span id="gateway-status" class="pill pill-off">
+        <span class="pill-dot"></span><span class="pill-label">Gateway</span>
+      </span>
+    </div>
   </header>
 
-  <main>
-    <aside class="sidebar">
-      <section>
-        <h2>Livreur</h2>
-        <label for="driver-select">Selectionner un livreur :</label>
-        <select id="driver-select">
-          <option value="">-- Choisir --</option>
-        </select>
-        <div class="actions">
-          <button id="track-btn" disabled>Suivre</button>
-          <button id="stop-btn" disabled>Arreter</button>
+  <nav class="main-tabs">
+    <button class="tab active" data-tab="client">
+      <span class="tab-icon">👤</span><span>Client</span>
+    </button>
+    <button class="tab" data-tab="admin">
+      <span class="tab-icon">⚙️</span><span>Admin</span>
+    </button>
+    <button class="tab" data-tab="livreur">
+      <span class="tab-icon">🛵</span><span>Livreur</span>
+    </button>
+  </nav>
+
+  <main class="content">
+
+    <!-- ============ CLIENT ============ -->
+    <section class="pane active" data-tab="client">
+      <div class="client-layout">
+
+        <aside class="client-sidebar">
+          <div class="card">
+            <div class="card-head between">
+              <div>
+                <h2>Nouvelle commande</h2>
+                <p class="card-sub" id="cl-session-info">Session client</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-row full">
+                  <label>Votre nom</label>
+                  <input id="cl-name" value="Med Abroud" />
+                </div>
+                <div class="form-row full">
+                  <label>Adresse <span class="chip chip-warn">fixe (demo)</span></label>
+                  <input id="cl-address" value="Sahloul, 5 rue de l'honneur" readonly />
+                </div>
+                <div class="form-row full">
+                  <label>Articles (JSON)</label>
+                  <textarea id="cl-items" rows="5">[
+  { "product_name": "Pizza Neptune", "quantity": 2, "unit_price": 12.5 },
+  { "product_name": "Sabrine 1L", "quantity": 1, "unit_price": 3 }
+]</textarea>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="cl-submit" class="btn btn-primary">Passer commande</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head between">
+              <div>
+                <h2>Mes commandes</h2>
+                <p class="card-sub">Cliquer pour voir le detail.</p>
+              </div>
+              <button id="cl-clear-session" class="btn btn-ghost btn-sm" title="Reinitialiser la session (oublier mes commandes)">Reset</button>
+            </div>
+            <div class="card-body card-body-flush">
+              <ul id="cl-orders-list" class="order-list"></ul>
+            </div>
+          </div>
+        </aside>
+
+        <div class="client-main">
+          <div class="card empty-card" id="cl-empty">
+            <div class="card-body">
+              <p class="empty-msg">Selectionnez une commande dans la liste<br />ou creez-en une nouvelle pour voir le suivi en temps reel.</p>
+            </div>
+          </div>
+
+          <div class="card hidden" id="cl-order-card">
+            <div class="card-head between">
+              <div>
+                <h2>Suivi de la commande</h2>
+                <p class="card-sub" id="cl-order-id-sub">-</p>
+              </div>
+              <span id="cl-order-status-pill" class="status-pill PENDING">PENDING</span>
+            </div>
+            <div class="card-body">
+              <dl class="kv">
+                <dt>Total</dt><dd id="cl-order-total">-</dd>
+                <dt>Livreur</dt><dd id="cl-order-driver">en attente d'attribution...</dd>
+                <dt>Articles</dt><dd id="cl-order-items">-</dd>
+              </dl>
+
+              <div class="timeline" id="cl-timeline">
+                <div class="t-step" data-status="PENDING"><span class="t-dot"></span><span class="t-label">Recue</span></div>
+                <div class="t-step" data-status="ASSIGNED"><span class="t-dot"></span><span class="t-label">Livreur</span></div>
+                <div class="t-step" data-status="PICKED_UP"><span class="t-dot"></span><span class="t-label">Recuperee</span></div>
+                <div class="t-step" data-status="IN_TRANSIT"><span class="t-dot"></span><span class="t-label">En route</span></div>
+                <div class="t-step" data-status="DELIVERED"><span class="t-dot"></span><span class="t-label">Livree</span></div>
+              </div>
+              <div id="cl-cancel-banner" class="banner-cancel hidden">Cette commande a ete annulee</div>
+            </div>
+          </div>
+
+          <div class="card hidden" id="cl-map-card">
+            <div class="card-head">
+              <h2>Position du livreur en temps reel</h2>
+              <p class="card-sub" id="cl-map-hint">La carte s'active des qu'un livreur prend votre commande.</p>
+            </div>
+            <div class="card-body card-body-flush">
+              <div id="cl-map" class="map"></div>
+            </div>
+          </div>
         </div>
-        <div class="actions">
-          <button id="refresh-drivers">Rafraichir la liste</button>
-          <button id="sim-btn" disabled>Demarrer simulateur</button>
+
+      </div>
+    </section>
+
+    <!-- ============ ADMIN ============ -->
+    <section class="pane" data-tab="admin">
+      <nav class="subtabs">
+        <button class="subtab active" data-sub="livreurs"><span class="subtab-icon">👥</span> Livreurs</button>
+        <button class="subtab" data-sub="commandes"><span class="subtab-icon">📋</span> Commandes</button>
+      </nav>
+
+      <div class="subpane active" data-sub="livreurs">
+        <div class="card">
+          <div class="card-head"><h2>Ajouter un livreur</h2></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-row"><label>Nom</label><input id="ad-name" value="Karim Ben Salah" /></div>
+              <div class="form-row"><label>Telephone</label><input id="ad-phone" value="+216 22 123 456" /></div>
+              <div class="form-row">
+                <label>Vehicule</label>
+                <select id="ad-vehicle"><option>scooter</option><option>moto</option><option>velo</option><option>voiture</option></select>
+              </div>
+            </div>
+            <div class="actions">
+              <button id="ad-add" class="btn btn-primary">Ajouter le livreur</button>
+              <span id="ad-add-status" class="status idle">idle</span>
+            </div>
+          </div>
         </div>
-      </section>
 
-      <section id="driver-info" class="info-block hidden">
-        <h2>Infos livreur</h2>
-        <dl>
-          <dt>Nom</dt><dd id="info-name">-</dd>
-          <dt>Vehicule</dt><dd id="info-vehicle">-</dd>
-          <dt>Statut</dt><dd id="info-status">-</dd>
-          <dt>Position</dt><dd id="info-position">-</dd>
-          <dt>Vitesse</dt><dd id="info-speed">-</dd>
-          <dt>Maj</dt><dd id="info-timestamp">-</dd>
-        </dl>
-      </section>
+        <div class="card">
+          <div class="card-head between">
+            <div>
+              <h2>Liste des livreurs</h2>
+              <p class="card-sub">Rafraichi auto toutes les 2s. Cliquer sur un livreur BUSY ouvre l'onglet Livreur.</p>
+            </div>
+            <button id="ad-refresh-drivers" class="btn btn-ghost btn-sm">Rafraichir</button>
+          </div>
+          <div class="card-body card-body-flush">
+            <table class="tbl">
+              <thead><tr><th>Nom</th><th>Telephone</th><th>Vehicule</th><th>Statut</th><th>Commande</th></tr></thead>
+              <tbody id="ad-drivers-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
 
-      <section id="order-info" class="info-block hidden">
-        <h2>Commande en cours</h2>
-        <dl>
-          <dt>Order</dt><dd id="order-id">-</dd>
-          <dt>Statut</dt><dd id="order-status">-</dd>
-          <dt>Client</dt><dd id="order-customer">-</dd>
-          <dt>Adresse</dt><dd id="order-address">-</dd>
-          <dt>Total</dt><dd id="order-total">-</dd>
-        </dl>
-      </section>
+      <div class="subpane" data-sub="commandes">
+        <div class="card">
+          <div class="card-head between">
+            <div>
+              <h2>Toutes les commandes</h2>
+              <p class="card-sub">Filtres en direct. Bouton Annuler dispo sur les statuts non finaux.</p>
+            </div>
+            <button id="ad-refresh-orders" class="btn btn-ghost btn-sm">Rafraichir</button>
+          </div>
+          <div class="card-body">
+            <div class="filters">
+              <div class="form-row">
+                <label>Statut</label>
+                <select id="ad-filter-status">
+                  <option value="">(tous)</option>
+                  <option>PENDING</option><option>ASSIGNED</option><option>PICKED_UP</option>
+                  <option>IN_TRANSIT</option><option>DELIVERED</option><option>CANCELLED</option>
+                </select>
+              </div>
+              <div class="form-row"><label>customer_id</label><input id="ad-filter-customer" placeholder="ex: client-ui-..." /></div>
+              <div class="form-row"><label>Recherche libre</label><input id="ad-filter-search" placeholder="nom, id..." /></div>
+            </div>
+          </div>
+          <div class="card-body card-body-flush">
+            <table class="tbl">
+              <thead><tr><th>id</th><th>Client</th><th>Articles</th><th>Total</th><th>Statut</th><th>Livreur</th><th>Cree</th><th></th></tr></thead>
+              <tbody id="ad-orders-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
 
-      <section class="log-block">
-        <h2>Journal des updates</h2>
-        <ul id="log"></ul>
-      </section>
-    </aside>
+    <!-- ============ LIVREUR ============ -->
+    <section class="pane" data-tab="livreur">
+      <div class="card">
+        <div class="card-head"><h2>Selectionner un livreur</h2></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-row full">
+              <label>Livreur</label>
+              <select id="lv-select"><option value="">-- Choisir --</option></select>
+            </div>
+          </div>
+        </div>
+      </div>
 
-    <div id="map"></div>
+      <div class="card hidden" id="lv-current-card">
+        <div class="card-head"><h2>Commande en cours</h2></div>
+        <div class="card-body">
+          <dl class="kv">
+            <dt>Livreur</dt><dd id="lv-driver-name">-</dd>
+            <dt>Vehicule</dt><dd id="lv-driver-vehicle">-</dd>
+            <dt>Statut driver</dt><dd id="lv-driver-status">-</dd>
+            <dt>Commande</dt><dd id="lv-order-id">-</dd>
+            <dt>Client</dt><dd id="lv-order-customer">-</dd>
+            <dt>Adresse</dt><dd id="lv-order-address">-</dd>
+            <dt>Statut livraison</dt><dd id="lv-delivery-status">-</dd>
+          </dl>
+        </div>
+
+        <div class="card-head"><h2>Actions livreur</h2></div>
+        <div class="card-body">
+          <div class="lv-grid">
+            <button id="lv-go-pickup" class="btn btn-warn btn-lg">🛵 Aller recuperer</button>
+            <button id="lv-pickup" class="btn btn-primary">✓ J'ai recupere</button>
+            <button id="lv-go-deliver" class="btn btn-warn btn-lg">🏁 Aller livrer</button>
+            <button id="lv-transit" class="btn btn-primary">✓ Je suis en route</button>
+            <button id="lv-deliver" class="btn btn-success btn-lg">✓ C'est livre</button>
+            <span id="lv-action-status" class="status idle">idle</span>
+          </div>
+        </div>
+
+        <div class="card-body card-body-flush">
+          <div id="lv-map" class="map"></div>
+        </div>
+      </div>
+
+      <div class="card hidden" id="lv-no-order-card">
+        <div class="card-body">
+          <p class="empty-msg">Ce livreur est AVAILABLE et n'a pas de commande en cours.<br />Passez une commande cote Client pour qu'il en recoive une automatiquement.</p>
+        </div>
+      </div>
+    </section>
+
   </main>
 
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""
-  ></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="app.js"></script>
 </body>
 </html>
