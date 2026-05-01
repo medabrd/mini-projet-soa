@@ -277,3 +277,101 @@ body.playground main {
   border-bottom: 1px solid #1f2937;
 }
 .stream-log .ev .t { color: #6b7280; margin-right: 6px; }
+
+/* ============== Sub-nav ============== */
+.sub-nav {
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  padding: 0 28px;
+  gap: 4px;
+}
+.sub-tab {
+  border: 0;
+  background: transparent;
+  padding: 12px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #6b7280;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  font-weight: 500;
+}
+.sub-tab:hover { color: #111; background: #f9fafb; }
+.sub-tab.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+  font-weight: 600;
+}
+
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ============== Creator panels ============== */
+.creator-panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.creator-panel h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: #111;
+}
+.creator-panel .desc {
+  color: #6b7280;
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+
+.creator-log {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.creator-log-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.creator-log-head h3 { margin: 0; font-size: 14px; color: #111; }
+
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.log-table thead th {
+  text-align: left;
+  background: #f3f4f6;
+  padding: 6px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #6b7280;
+  font-weight: 600;
+}
+.log-table tbody td {
+  padding: 6px 10px;
+  border-top: 1px solid #f3f4f6;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+}
+.log-table tbody tr:hover { background: #f9fafb; }
+.log-table .status-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.status-pill.PENDING { background: #fef3c7; color: #92400e; }
+.status-pill.ASSIGNED { background: #dbeafe; color: #1e40af; }
+.status-pill.AVAILABLE { background: #d1fae5; color: #065f46; }
+.status-pill.BUSY { background: #fee2e2; color: #991b1b; }
+.status-pill.FAIL { background: #fee2e2; color: #991b1b; }

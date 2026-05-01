@@ -444,6 +444,202 @@ function appendStreamLine(logEl, text) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+// ============ Sub-nav (onglets) ============
+function setupTabs() {
+  const tabs = document.querySelectorAll('.sub-tab');
+  const panes = document.querySelectorAll('.tab-pane');
+  tabs.forEach(t => t.addEventListener('click', () => {
+    const target = t.dataset.tab;
+    tabs.forEach(x => x.classList.toggle('active', x === t));
+    panes.forEach(p => p.classList.toggle('active', p.dataset.tab === target));
+  }));
+}
+
+// ============ Creators (commandes & livreurs en lot) ============
+const TUNISIAN_FIRST = ['Karim', 'Sami', 'Anis', 'Walid', 'Mehdi', 'Yassine', 'Hamza', 'Salah', 'Bilel', 'Aymen', 'Oussama', 'Riadh', 'Fares', 'Mounir', 'Imed'];
+const TUNISIAN_LAST = ['Ben Salah', 'Hadj', 'Trabelsi', 'Mansouri', 'Bouzid', 'Khelifi', 'Gharbi', 'Sassi', 'Ferchichi', 'Mejri'];
+const VEHICLES = ['scooter', 'moto', 'velo', 'voiture'];
+const ADDRESSES = ['Sahloul 5 rue de l\'honneur', 'avenue Habib Bourguiba, Sousse', 'rue de Carthage, Hammam Sousse', 'cite el Riadh, Sousse', 'avenue Mohamed V'];
+const PRODUCTS = [
+  { product_name: 'Pizza Neptune', unit_price: 12.5 },
+  { product_name: 'Burger maison', unit_price: 9 },
+  { product_name: 'Plat du jour', unit_price: 15 },
+  { product_name: 'Sabrine 1L', unit_price: 3 },
+  { product_name: 'Cafe espresso', unit_price: 2.5 },
+  { product_name: 'Tacos poulet', unit_price: 11 },
+];
+
+function rand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+function randomOrderPayload(i) {
+  const itemsCount = randInt(1, 3);
+  const items = Array.from({ length: itemsCount }, () => {
+    const p = rand(PRODUCTS);
+    return { product_name: p.product_name, quantity: randInt(1, 3), unit_price: p.unit_price };
+  });
+  return {
+    customer_id: `cust-${String(i).padStart(3, '0')}`,
+    customer_name: `${rand(TUNISIAN_FIRST)} ${rand(TUNISIAN_LAST)}`,
+    delivery_address: rand(ADDRESSES),
+    items,
+  };
+}
+
+function randomDriverPayload() {
+  return {
+    name: `${rand(TUNISIAN_FIRST)} ${rand(TUNISIAN_LAST)}`,
+    phone: `+216 ${randInt(20, 99)} ${randInt(100, 999)} ${randInt(100, 999)}`,
+    vehicle_type: rand(VEHICLES),
+  };
+}
+
+function appendOrderLog(idx, order, err) {
+  const tbody = document.getElementById('o-log-body');
+  const tr = document.createElement('tr');
+  if (err) {
+    tr.innerHTML = `<td>${idx}</td><td colspan="4" style="color:#991b1b">FAIL ${escapeHtml(err)}</td><td>${new Date().toLocaleTimeString()}</td>`;
+  } else {
+    const total = (order.items || []).reduce((s, it) => s + it.quantity * it.unit_price, 0);
+    tr.innerHTML = `
+      <td>${idx}</td>
+      <td title="${order.id}">${order.id.slice(0, 8)}...</td>
+      <td><span class="status-pill ${order.status}">${order.status}</span></td>
+      <td>${escapeHtml(order.customer_name)}</td>
+      <td>${total.toFixed(2)} TND</td>
+      <td>${new Date().toLocaleTimeString()}</td>`;
+  }
+  tbody.prepend(tr);
+}
+
+function appendDriverLog(idx, driver, err) {
+  const tbody = document.getElementById('d-log-body');
+  const tr = document.createElement('tr');
+  if (err) {
+    tr.innerHTML = `<td>${idx}</td><td colspan="4" style="color:#991b1b">FAIL ${escapeHtml(err)}</td><td>${new Date().toLocaleTimeString()}</td>`;
+  } else {
+    tr.innerHTML = `
+      <td>${idx}</td>
+      <td title="${driver.id}">${driver.id.slice(0, 8)}...</td>
+      <td>${escapeHtml(driver.name)}</td>
+      <td>${escapeHtml(driver.vehicle_type)}</td>
+      <td><span class="status-pill ${driver.status}">${driver.status}</span></td>
+      <td>${new Date().toLocaleTimeString()}</td>`;
+  }
+  tbody.prepend(tr);
+}
+
+async function postJson(path, body) {
+  const r = await fetch(GW + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await r.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
+  return data;
+}
+
+function setupOrderCreator() {
+  let orderIdx = 0;
+
+  document.getElementById('o-create-one').addEventListener('click', async () => {
+    orderIdx++;
+    try {
+      const body = {
+        customer_id: document.getElementById('o-customer_id').value,
+        customer_name: document.getElementById('o-customer_name').value,
+        delivery_address: document.getElementById('o-delivery_address').value,
+        items: JSON.parse(document.getElementById('o-items').value),
+      };
+      const o = await postJson('/api/orders', body);
+      setVar('order_id', o.id);
+      appendOrderLog(orderIdx, o);
+    } catch (e) {
+      appendOrderLog(orderIdx, null, e.message);
+    }
+  });
+
+  document.getElementById('o-create-batch').addEventListener('click', async () => {
+    const n = Math.max(1, Math.min(50, Number(document.getElementById('o-batch-n').value) || 1));
+    const delay = Math.max(0, Math.min(5000, Number(document.getElementById('o-batch-delay').value) || 0));
+    const status = document.getElementById('o-batch-status');
+    const btn = document.getElementById('o-create-batch');
+    btn.disabled = true;
+    for (let i = 0; i < n; i++) {
+      orderIdx++;
+      status.className = 'card-status running';
+      status.textContent = `${i + 1}/${n}...`;
+      try {
+        const o = await postJson('/api/orders', randomOrderPayload(orderIdx));
+        if (i === n - 1) setVar('order_id', o.id);
+        appendOrderLog(orderIdx, o);
+      } catch (e) {
+        appendOrderLog(orderIdx, null, e.message);
+      }
+      if (delay > 0 && i < n - 1) await new Promise(r => setTimeout(r, delay));
+    }
+    status.className = 'card-status ok';
+    status.textContent = `${n} crees`;
+    btn.disabled = false;
+  });
+
+  document.getElementById('o-log-clear').addEventListener('click', () => {
+    document.getElementById('o-log-body').innerHTML = '';
+    orderIdx = 0;
+  });
+}
+
+function setupDriverCreator() {
+  let driverIdx = 0;
+
+  document.getElementById('d-create-one').addEventListener('click', async () => {
+    driverIdx++;
+    try {
+      const body = {
+        name: document.getElementById('d-name').value,
+        phone: document.getElementById('d-phone').value,
+        vehicle_type: document.getElementById('d-vehicle_type').value,
+      };
+      const d = await postJson('/api/drivers', body);
+      setVar('driver_id', d.id);
+      appendDriverLog(driverIdx, d);
+    } catch (e) {
+      appendDriverLog(driverIdx, null, e.message);
+    }
+  });
+
+  document.getElementById('d-create-batch').addEventListener('click', async () => {
+    const n = Math.max(1, Math.min(50, Number(document.getElementById('d-batch-n').value) || 1));
+    const delay = Math.max(0, Math.min(5000, Number(document.getElementById('d-batch-delay').value) || 0));
+    const status = document.getElementById('d-batch-status');
+    const btn = document.getElementById('d-create-batch');
+    btn.disabled = true;
+    for (let i = 0; i < n; i++) {
+      driverIdx++;
+      status.className = 'card-status running';
+      status.textContent = `${i + 1}/${n}...`;
+      try {
+        const d = await postJson('/api/drivers', randomDriverPayload());
+        if (i === n - 1) setVar('driver_id', d.id);
+        appendDriverLog(driverIdx, d);
+      } catch (e) {
+        appendDriverLog(driverIdx, null, e.message);
+      }
+      if (delay > 0 && i < n - 1) await new Promise(r => setTimeout(r, delay));
+    }
+    status.className = 'card-status ok';
+    status.textContent = `${n} crees`;
+    btn.disabled = false;
+  });
+
+  document.getElementById('d-log-clear').addEventListener('click', () => {
+    document.getElementById('d-log-body').innerHTML = '';
+    driverIdx = 0;
+  });
+}
+
 // ============ Init ============
 function init() {
   refreshVarsUi();
@@ -451,6 +647,9 @@ function init() {
     const container = document.getElementById('cards-' + card.section);
     if (container) container.appendChild(renderCard(card));
   }
+  setupTabs();
+  setupOrderCreator();
+  setupDriverCreator();
   checkGatewayHealth();
   setInterval(checkGatewayHealth, 10000);
 }
