@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>REST playground - SoA Livraison</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="playground.css" />
+</head>
+<body class="playground">
+  <header>
+    <h1>SoA Livraison</h1>
+    <nav class="nav-tools">
+      <a class="nav-link" href="/">Tracking live</a>
+      <a class="nav-link active" href="/rest.html">REST playground</a>
+      <a class="nav-link" href="/graphql.html">GraphQL playground</a>
+    </nav>
+    <span id="gateway-status" class="status off">?</span>
+  </header>
+
+  <section class="vars-bar">
+    <div class="vars-grid">
+      <div class="var-cell">
+        <label>driver_id</label>
+        <code id="var-driver_id">(vide)</code>
+        <button class="var-copy" data-key="driver_id" title="Copier">copy</button>
+      </div>
+      <div class="var-cell">
+        <label>order_id</label>
+        <code id="var-order_id">(vide)</code>
+        <button class="var-copy" data-key="order_id" title="Copier">copy</button>
+      </div>
+      <div class="var-cell">
+        <label>order2_id</label>
+        <code id="var-order2_id">(vide)</code>
+        <button class="var-copy" data-key="order2_id" title="Copier">copy</button>
+      </div>
+      <div class="var-cell">
+        <label>delivery_id</label>
+        <code id="var-delivery_id">(vide)</code>
+        <button class="var-copy" data-key="delivery_id" title="Copier">copy</button>
+      </div>
+    </div>
+    <button id="vars-reset" class="vars-reset" title="Vider tous les ids stockes">Reset variables</button>
+  </section>
+
+  <main class="pg-main">
+    <p class="pg-intro">
+      16 endpoints REST exposes par l'API Gateway (port 3000). Les ids sont auto-extraits des reponses et reinjectes
+      dans les champs marques <code>auto</code>. Pour un test propre, on suppose la base vide au depart : commence par
+      <strong>POST /api/drivers</strong> puis <strong>POST /api/orders</strong>.
+    </p>
+
+    <section id="section-health" class="pg-section">
+      <h2>Health</h2>
+      <div class="cards" id="cards-health"></div>
+    </section>
+
+    <section id="section-drivers" class="pg-section">
+      <h2>Drivers</h2>
+      <div class="cards" id="cards-drivers"></div>
+    </section>
+
+    <section id="section-orders" class="pg-section">
+      <h2>Orders</h2>
+      <div class="cards" id="cards-orders"></div>
+    </section>
+
+    <section id="section-deliveries" class="pg-section">
+      <h2>Deliveries</h2>
+      <div class="cards" id="cards-deliveries"></div>
+    </section>
+  </main>
+
+  <script src="rest.js"></script>
+</body>
+</html>

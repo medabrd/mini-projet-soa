@@ -14,36 +14,14 @@
 </head>
 <body>
   <header>
-    <h1>Suivi des livreurs en temps reel</h1>
+    <h1>SoA Livraison</h1>
     <nav class="nav-tools">
-      <button class="nav-btn rest" id="open-rest-demo" title="Demo complete via REST">
-        <span class="badge">REST</span>
-        <span class="label">Flow complet</span>
-      </button>
-      <button class="nav-btn graphql" id="open-graphql-demo" title="Demo complete via GraphQL">
-        <span class="badge">GQL</span>
-        <span class="label">Flow complet</span>
-      </button>
+      <a class="nav-link active" href="/">Tracking live</a>
+      <a class="nav-link" href="/rest.html">REST playground</a>
+      <a class="nav-link" href="/graphql.html">GraphQL playground</a>
     </nav>
     <span id="connection-status" class="status off">Deconnecte</span>
   </header>
-
-  <div id="demo-modal" class="modal hidden">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 id="demo-title">Flow de demonstration</h2>
-        <div class="modal-actions">
-          <button id="demo-run">Lancer le flow</button>
-          <button id="demo-reset">Reset</button>
-          <button id="demo-close">Fermer</button>
-        </div>
-      </div>
-      <p id="demo-intro" class="modal-intro"></p>
-      <div class="modal-body">
-        <ol id="demo-steps"></ol>
-      </div>
-    </div>
-  </div>
 
   <main>
     <aside class="sidebar">
@@ -101,6 +79,5 @@
     crossorigin=""
   ></script>
   <script src="app.js"></script>
-  <script src="demo.js"></script>
 </body>
 </html>
