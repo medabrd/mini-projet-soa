@@ -115,30 +115,6 @@ async function releaseDriver(driverId) {
   return docToDriver(fresh);
 }
 
-// Cree quelques livreurs par defaut si la base est vide.
-// Utile parce que RxDB memory perd tout au redemarrage du conteneur :
-// sans seed, il faudrait re-RegisterDriver a la main apres chaque restart
-// pour que la chaine Kafka (auto-assignation sur order.placed) fonctionne.
-async function seedDefaultsIfEmpty() {
-  const db = getDb();
-  const all = await db.drivers.find().exec();
-  if (all.length > 0) {
-    console.log(`Seed driver : ${all.length} livreur(s) deja en base, pas de seed`);
-    return;
-  }
-  console.log('Seed driver : base vide, creation des livreurs par defaut...');
-  const seeds = [
-    { name: 'Karim Ben Salah', phone: '+216 22 123 456', vehicle_type: 'scooter' },
-    { name: 'Sami Hadj', phone: '+216 28 555 666', vehicle_type: 'voiture' },
-    { name: 'Anis Trabelsi', phone: '+216 50 111 222', vehicle_type: 'velo' },
-  ];
-  for (const s of seeds) {
-    const d = await registerDriver(s);
-    console.log(`  -> ${d.name} (${d.id}) [${d.vehicle_type}]`);
-  }
-  console.log(`Seed driver : ${seeds.length} livreurs crees.`);
-}
-
 module.exports = {
   registerDriver,
   getDriver,
@@ -147,5 +123,4 @@ module.exports = {
   assignDriverToOrder,
   pickAvailableDriver,
   releaseDriver,
-  seedDefaultsIfEmpty,
 };

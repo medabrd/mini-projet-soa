@@ -31,7 +31,12 @@ const handlers = {
   RegisterDriver: async (call, callback) => {
     try {
       const driver = await repo.registerDriver(call.request);
+      // Repondre tout de suite au client, puis tenter d'assigner ce nouveau
+      // driver a la 1ere commande en file d'attente en tache de fond.
       callback(null, driver);
+      kafka.tryAssignToPending(driver).catch(err =>
+        console.error('Echec auto-assignation queue:', err.message)
+      );
     } catch (err) {
       callback({ code: grpc.status.INVALID_ARGUMENT, message: err.message });
     }

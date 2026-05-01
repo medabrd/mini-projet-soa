@@ -23,6 +23,13 @@ const consumer = kafka.consumer({ groupId: 'driver-service-group' });
 let producerReady = false;
 let consumerReady = false;
 
+// File d'attente en memoire des commandes qui n'ont pas trouve de driver
+// au moment ou order.placed est arrive. Vide au demarrage (volontairement,
+// la base RxDB est aussi en memoire donc on accepte la perte au restart).
+// Elle est consommee quand un driver devient AVAILABLE (RegisterDriver ou
+// liberation suite a delivery.delivered).
+const pendingOrders = [];
+
 async function ensureTopics() {
   const admin = kafka.admin();
   await admin.connect();
@@ -121,10 +128,12 @@ async function publishLocationUpdated(driverId, location) {
   }
 }
 
-// Quand une commande est creee (order.placed), on auto-assigne un livreur disponible
+// Quand une commande est creee (order.placed), on auto-assigne un livreur
+// disponible. Si aucun n'est dispo, on enqueue la commande pour qu'elle
+// soit prise plus tard par un RegisterDriver ou une liberation.
 async function handleOrderEvent(evt) {
   if (evt.type !== 'order.placed') {
-    return; // on ignore les autres types pour l'instant (cancelled, etc.)
+    return;
   }
   if (!evt.order_id) {
     console.error('Event order.placed sans order_id:', evt);
@@ -133,7 +142,8 @@ async function handleOrderEvent(evt) {
 
   const available = await repo.pickAvailableDriver();
   if (!available) {
-    console.warn(`Pas de livreur dispo pour la commande ${evt.order_id}`);
+    pendingOrders.push({ order_id: evt.order_id, queued_at: new Date().toISOString() });
+    console.warn(`Order ${evt.order_id} mis en file d'attente (aucun driver dispo, queue=${pendingOrders.length})`);
     return;
   }
 
@@ -142,8 +152,8 @@ async function handleOrderEvent(evt) {
   await publishDriverAssigned(updated, evt.order_id);
 }
 
-// Quand une livraison se termine ou est annulee, on libere le livreur
-// (status -> AVAILABLE) pour qu'il puisse prendre une nouvelle commande.
+// Quand une livraison se termine ou est annulee, on libere le livreur,
+// puis on lui donne la prochaine commande de la queue s'il y en a une.
 async function handleDeliveryEvent(evt) {
   if (evt.type !== 'delivery.delivered' && evt.type !== 'delivery.cancelled') {
     return;
@@ -152,7 +162,29 @@ async function handleDeliveryEvent(evt) {
   const released = await repo.releaseDriver(evt.driver_id);
   if (released) {
     console.log(`Livreur libere : ${released.name} (${released.id}) suite a ${evt.type}`);
+    await tryAssignToPending(released);
   }
+}
+
+// Prend la 1ere commande de la queue (si elle existe) et l'assigne au driver
+// donne. Appele a 2 endroits : RegisterDriver (nouveau driver) et apres
+// releaseDriver (driver re-AVAILABLE en fin de livraison).
+async function tryAssignToPending(driver) {
+  if (!driver || pendingOrders.length === 0) return false;
+  const next = pendingOrders.shift();
+  const updated = await repo.assignDriverToOrder(driver.id, next.order_id);
+  if (!updated) {
+    // driver disparu entre temps : on remet l'order en tete de file
+    pendingOrders.unshift(next);
+    return false;
+  }
+  console.log(`Queue -> ${updated.name} (${updated.id}) prend order ${next.order_id} (reste ${pendingOrders.length})`);
+  await publishDriverAssigned(updated, next.order_id);
+  return true;
+}
+
+function getPendingCount() {
+  return pendingOrders.length;
 }
 
 async function disconnect() {
@@ -165,4 +197,6 @@ module.exports = {
   disconnect,
   publishDriverAssigned,
   publishLocationUpdated,
+  tryAssignToPending,
+  getPendingCount,
 };
