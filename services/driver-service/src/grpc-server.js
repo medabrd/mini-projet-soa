@@ -113,6 +113,19 @@ const handlers = {
     call.on('close', cleanup);
     call.on('end', cleanup);
   },
+
+  DeleteDriver: async (call, callback) => {
+    try {
+      const result = await repo.deleteDriver(call.request.id);
+      if (!result.deleted) {
+        if (result.reason === 'not_found') return callback(notFoundError());
+        if (result.reason === 'busy') return callback({ code: grpc.status.FAILED_PRECONDITION, message: 'Livreur BUSY : impossible de supprimer un livreur en cours de livraison' });
+      }
+      callback(null, { deleted: true });
+    } catch (err) {
+      callback(internalError(err));
+    }
+  },
 };
 
 function startGrpcServer(port) {

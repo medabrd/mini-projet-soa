@@ -41,6 +41,16 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// DELETE /api/drivers/:id - supprimer un livreur (refuse si BUSY)
+router.delete('/:id', async (req, res) => {
+  try {
+    await driverClient.DeleteDriver({ id: req.params.id });
+    res.json({ deleted: true });
+  } catch (err) {
+    grpcErrorToHttp(err, res);
+  }
+});
+
 // PATCH /api/drivers/:id/location - mettre a jour la position
 router.patch('/:id/location', async (req, res) => {
   try {

@@ -114,6 +114,10 @@ function renderClientTimeline(status) {
   });
   tl.dataset.progress = status === 'CANCELLED' ? '0' : Math.max(0, idx);
   document.getElementById('cl-cancel-banner').classList.toggle('hidden', status !== 'CANCELLED');
+  // Bouton "Annuler ma commande" visible si l'order n'est pas DELIVERED ni CANCELLED
+  const cancelBtn = document.getElementById('cl-cancel-order');
+  const cancellable = status !== 'DELIVERED' && status !== 'CANCELLED';
+  cancelBtn.classList.toggle('hidden', !cancellable);
 }
 
 async function submitClientOrder() {
@@ -283,10 +287,22 @@ function resetClientSession() {
   refreshClientOrdersList();
 }
 
+async function cancelClientOrder() {
+  if (!clientState.orderId) return;
+  if (!confirm('Annuler cette commande ? Action irreversible.')) return;
+  try {
+    await callGw('POST', `/api/orders/${clientState.orderId}/cancel`, { reason: 'Annulee par le client' });
+    refreshClientOrdersList();
+  } catch (e) {
+    alert('Echec annulation : ' + e.message);
+  }
+}
+
 function setupClient() {
   document.getElementById('cl-session-info').textContent = 'Session : ' + clientState.customerId;
   document.getElementById('cl-submit').addEventListener('click', submitClientOrder);
   document.getElementById('cl-clear-session').addEventListener('click', resetClientSession);
+  document.getElementById('cl-cancel-order').addEventListener('click', cancelClientOrder);
   refreshClientOrdersList();
   setInterval(refreshClientOrdersList, 3000);
 }
@@ -327,21 +343,38 @@ async function refreshDrivers() {
     tbody.innerHTML = '';
     const sorted = [...seen.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     if (sorted.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty-row">Aucun livreur. Utilise le formulaire ci-dessus pour en ajouter.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-row">Aucun livreur. Utilise le formulaire ci-dessus pour en ajouter.</td></tr>';
       return;
     }
     for (const d of sorted) {
       const tr = document.createElement('tr');
       const orderInfo = orderByDriver.get(d.id);
+      const deletable = d.status !== 'BUSY';
       tr.className = d.status === 'BUSY' ? 'clickable-row' : '';
       tr.innerHTML = `
         <td>${escapeHtml(d.name)}</td>
         <td>${escapeHtml(d.phone)}</td>
         <td>${escapeHtml(d.vehicle_type)}</td>
         <td><span class="status-pill ${d.status}">${d.status}</span></td>
-        <td>${orderInfo ? `<code title="${orderInfo.order_id}">${orderInfo.order_id.slice(0, 8)}...</code> <span class="status-pill ${orderInfo.status}">${orderInfo.status}</span>` : '-'}</td>`;
+        <td>${orderInfo ? `<code title="${orderInfo.order_id}">${orderInfo.order_id.slice(0, 8)}...</code> <span class="status-pill ${orderInfo.status}">${orderInfo.status}</span>` : '-'}</td>
+        <td><button class="row-action-btn" ${deletable ? '' : 'disabled title="BUSY : impossible de supprimer"'} data-delete-id="${d.id}">Supprimer</button></td>`;
+      const delBtn = tr.querySelector('button[data-delete-id]');
+      if (delBtn && deletable) {
+        delBtn.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          if (!confirm(`Supprimer le livreur ${d.name} ?`)) return;
+          try {
+            await callGw('DELETE', `/api/drivers/${d.id}`);
+            refreshDrivers();
+            refreshLivreurDropdown();
+          } catch (e) {
+            alert('Echec suppression : ' + e.message);
+          }
+        });
+      }
       if (d.status === 'BUSY') {
-        tr.addEventListener('click', () => {
+        tr.addEventListener('click', (ev) => {
+          if (ev.target.closest('button')) return;
           switchMainTab('livreur');
           loadLivreurFor(d.id);
         });

@@ -7,6 +7,7 @@ service DriverService {
   rpc GetDriver(GetDriverRequest) returns (Driver);
   rpc ListAvailableDrivers(ListAvailableDriversRequest) returns (ListDriversResponse);
   rpc UpdateLocation(UpdateLocationRequest) returns (Location);
+  rpc DeleteDriver(DeleteDriverRequest) returns (DeleteDriverResponse);
 
   // Server-streaming : pousse la position du livreur a chaque mise a jour
   rpc StreamDriverLocation(StreamLocationRequest) returns (stream Location);
@@ -69,4 +70,12 @@ message UpdateLocationRequest {
 
 message StreamLocationRequest {
   string driver_id = 1;
+}
+
+message DeleteDriverRequest {
+  string id = 1;
+}
+
+message DeleteDriverResponse {
+  bool deleted = 1;
 }

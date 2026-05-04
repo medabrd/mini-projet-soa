@@ -115,6 +115,17 @@ async function releaseDriver(driverId) {
   return docToDriver(fresh);
 }
 
+// Supprime un driver de la base. Refuse si le driver est BUSY pour eviter
+// d'orphaner une livraison en cours.
+async function deleteDriver(id) {
+  const db = getDb();
+  const doc = await db.drivers.findOne(id).exec();
+  if (!doc) return { deleted: false, reason: 'not_found' };
+  if (doc.status === 'BUSY') return { deleted: false, reason: 'busy' };
+  await doc.remove();
+  return { deleted: true };
+}
+
 module.exports = {
   registerDriver,
   getDriver,
@@ -123,4 +134,5 @@ module.exports = {
   assignDriverToOrder,
   pickAvailableDriver,
   releaseDriver,
+  deleteDriver,
 };
