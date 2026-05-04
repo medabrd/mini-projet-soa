@@ -131,7 +131,19 @@ async function publishLocationUpdated(driverId, location) {
 // Quand une commande est creee (order.placed), on auto-assigne un livreur
 // disponible. Si aucun n'est dispo, on enqueue la commande pour qu'elle
 // soit prise plus tard par un RegisterDriver ou une liberation.
+// Quand une commande est annulee (order.cancelled), on la retire de la file
+// pour eviter qu'un futur driver ne soit assigne a une commande morte.
 async function handleOrderEvent(evt) {
+  if (evt.type === 'order.cancelled') {
+    if (!evt.order_id) return;
+    const idx = pendingOrders.findIndex(p => p.order_id === evt.order_id);
+    if (idx >= 0) {
+      pendingOrders.splice(idx, 1);
+      console.log(`Order ${evt.order_id} retiree de la file (cancelled, queue=${pendingOrders.length})`);
+    }
+    return;
+  }
+
   if (evt.type !== 'order.placed') {
     return;
   }

@@ -94,6 +94,14 @@ function attachDriver(orderId, driverId, driverName) {
     return fresh;
   }
 
+  // Filet de securite : ne JAMAIS reactiver une delivery deja terminee
+  // (CANCELLED ou DELIVERED). Sinon un driver assigne par erreur a une
+  // commande annulee la ressusciterait via la cascade Kafka.
+  if (existing.status === 'CANCELLED' || existing.status === 'DELIVERED') {
+    console.warn(`attachDriver ignore : delivery ${existing.id} status=${existing.status}`);
+    return null;
+  }
+
   db.prepare(
     "UPDATE deliveries SET driver_id = ?, driver_name = ?, status = 'ASSIGNED', updated_at = ? WHERE id = ?",
   ).run(driverId, driverName || '', nowIso(), existing.id);
