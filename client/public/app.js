@@ -181,6 +181,10 @@ function selectClientOrder(order) {
   document.getElementById('cl-empty').classList.add('hidden');
   document.getElementById('cl-order-card').classList.remove('hidden');
   document.getElementById('cl-map-card').classList.remove('hidden');
+  // Reset bouton annuler
+  const cancelBtn = document.getElementById('cl-cancel-order');
+  cancelBtn.disabled = false;
+  cancelBtn.textContent = 'Annuler ma commande';
   // Reset map markers (sauf pickup/delivery)
   if (clientMarker) { clientMap.removeLayer(clientMarker); clientMarker = null; }
   if (clientTrail) { clientMap.removeLayer(clientTrail); clientTrail = null; clientTrailPoints.length = 0; }
@@ -290,11 +294,23 @@ function resetClientSession() {
 async function cancelClientOrder() {
   if (!clientState.orderId) return;
   if (!confirm('Annuler cette commande ? Action irreversible.')) return;
+  const btn = document.getElementById('cl-cancel-order');
+  // Verrouille immediatement le bouton (anti double-click pendant
+  // que l'event Kafka order.cancelled propage jusqu'au SSE delivery)
+  btn.disabled = true;
+  btn.textContent = 'Annulation en cours...';
   try {
     await callGw('POST', `/api/orders/${clientState.orderId}/cancel`, { reason: 'Annulee par le client' });
+    // Met a jour l'UI tout de suite, sans attendre le SSE
+    renderClientTimeline('CANCELLED');
+    const pill = document.getElementById('cl-order-status-pill');
+    pill.className = 'status-pill CANCELLED';
+    pill.textContent = 'CANCELLED';
     refreshClientOrdersList();
   } catch (e) {
     alert('Echec annulation : ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Annuler ma commande';
   }
 }
 
