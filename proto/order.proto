@@ -8,6 +8,7 @@ service OrderService {
   rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
   rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (Order);
   rpc CancelOrder(CancelOrderRequest) returns (Order);
+  rpc DeleteOrder(DeleteOrderRequest) returns (DeleteOrderResponse);
 }
 
 enum OrderStatus {
@@ -71,4 +72,12 @@ message UpdateOrderStatusRequest {
 message CancelOrderRequest {
   string id = 1;
   string reason = 2;
+}
+
+message DeleteOrderRequest {
+  string id = 1;
+}
+
+message DeleteOrderResponse {
+  bool deleted = 1;
 }

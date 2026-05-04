@@ -428,8 +428,12 @@ async function refreshOrders() {
     }
     for (const o of orders) {
       const tr = document.createElement('tr');
-      const cancellable = !['DELIVERED', 'CANCELLED'].includes(o.status);
+      const isFinal = ['DELIVERED', 'CANCELLED'].includes(o.status);
       const itemsCount = (o.items || []).length;
+      // Bouton conditionnel : Annuler tant qu'active, Supprimer une fois terminee
+      const actionBtn = isFinal
+        ? `<button class="row-action-btn" data-delete-order="${o.id}">Supprimer</button>`
+        : `<button class="row-action-btn" data-cancel-id="${o.id}">Annuler</button>`;
       tr.innerHTML = `
         <td><code title="${o.id}">${o.id.slice(0, 8)}...</code></td>
         <td>${escapeHtml(o.customer_name)}<br><small style="color:#9ca3af">${escapeHtml(o.customer_id)}</small></td>
@@ -438,10 +442,10 @@ async function refreshOrders() {
         <td><span class="status-pill ${o.status}">${o.status}</span></td>
         <td>${o.assigned_driver_id ? `<code>${o.assigned_driver_id.slice(0, 8)}...</code>` : '-'}</td>
         <td>${new Date(o.created_at).toLocaleTimeString()}</td>
-        <td><button class="row-action-btn" ${cancellable ? '' : 'disabled'} data-cancel-id="${o.id}">Annuler</button></td>`;
-      const btn = tr.querySelector('button[data-cancel-id]');
-      if (btn && cancellable) {
-        btn.addEventListener('click', async (ev) => {
+        <td>${actionBtn}</td>`;
+      const cancelBtn = tr.querySelector('button[data-cancel-id]');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', async (ev) => {
           ev.stopPropagation();
           if (!confirm('Annuler la commande ' + o.id.slice(0, 8) + ' ?')) return;
           try {
@@ -450,6 +454,19 @@ async function refreshOrders() {
             refreshDrivers();
           } catch (e) {
             alert('Echec annulation : ' + e.message);
+          }
+        });
+      }
+      const delBtn = tr.querySelector('button[data-delete-order]');
+      if (delBtn) {
+        delBtn.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          if (!confirm('Supprimer definitivement la commande ' + o.id.slice(0, 8) + ' ? Cette action est irreversible.')) return;
+          try {
+            await callGw('DELETE', `/api/orders/${o.id}`);
+            refreshOrders();
+          } catch (e) {
+            alert('Echec suppression : ' + e.message);
           }
         });
       }

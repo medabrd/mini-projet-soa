@@ -78,4 +78,14 @@ router.post('/:id/cancel', async (req, res) => {
   }
 });
 
+// DELETE /api/orders/:id - supprimer (admin) une commande terminee
+router.delete('/:id', async (req, res) => {
+  try {
+    await orderClient.DeleteOrder({ id: req.params.id });
+    res.json({ deleted: true });
+  } catch (err) {
+    grpcErrorToHttp(err, res);
+  }
+});
+
 module.exports = router;

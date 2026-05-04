@@ -81,6 +81,21 @@ const handlers = {
       callback({ code: grpc.status.FAILED_PRECONDITION, message: err.message });
     }
   },
+
+  DeleteOrder: (call, callback) => {
+    try {
+      const result = repo.deleteOrder(call.request.id);
+      if (!result.deleted) {
+        if (result.reason === 'not_found') return callback(notFoundError());
+        if (result.reason === 'not_final') {
+          return callback({ code: grpc.status.FAILED_PRECONDITION, message: 'Suppression autorisee uniquement pour les commandes DELIVERED ou CANCELLED' });
+        }
+      }
+      callback(null, { deleted: true });
+    } catch (err) {
+      callback(internalError(err));
+    }
+  },
 };
 
 function startGrpcServer(port) {

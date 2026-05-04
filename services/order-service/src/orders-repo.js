@@ -138,10 +138,26 @@ function cancelOrder(id) {
   return getOrder(id);
 }
 
+// Suppression definitive d'une commande. Autorisee uniquement si l'order
+// est dans un etat final (DELIVERED ou CANCELLED) pour eviter de supprimer
+// une commande active dont la chaine Kafka serait en cours.
+function deleteOrder(id) {
+  const db = getDb();
+  const existing = db.prepare('SELECT id, status FROM orders WHERE id = ?').get(id);
+  if (!existing) return { deleted: false, reason: 'not_found' };
+  if (!['DELIVERED', 'CANCELLED'].includes(existing.status)) {
+    return { deleted: false, reason: 'not_final' };
+  }
+  db.prepare('DELETE FROM order_items WHERE order_id = ?').run(id);
+  db.prepare('DELETE FROM orders WHERE id = ?').run(id);
+  return { deleted: true };
+}
+
 module.exports = {
   createOrder,
   getOrder,
   listOrders,
   updateOrderStatus,
   cancelOrder,
+  deleteOrder,
 };
