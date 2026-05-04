@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>SoA Livraison</title>
+  <title>SoA Livraison - GraphQL</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
@@ -17,13 +17,13 @@
       <span class="brand-logo">🚚</span>
       <div class="brand-text">
         <span class="brand-title">SoA Livraison</span>
-        <span class="brand-sub">Demonstration metier temps reel</span>
+        <span class="brand-sub">Demonstration GraphQL (polling 1.5s, SSE GPS conserve)</span>
       </div>
     </div>
     <div class="topbar-right">
       <div class="proto-switch">
-        <a class="proto-btn active" href="/">REST</a>
-        <a class="proto-btn" href="/graphql.html">GraphQL</a>
+        <a class="proto-btn" href="/">REST</a>
+        <a class="proto-btn active" href="/graphql.html">GraphQL</a>
       </div>
       <span id="gateway-status" class="pill pill-off">
         <span class="pill-dot"></span><span class="pill-label">Gateway</span>
@@ -87,7 +87,7 @@
                 <h2>Mes commandes</h2>
                 <p class="card-sub">Cliquer pour voir le detail.</p>
               </div>
-              <button id="cl-clear-session" class="btn btn-ghost btn-sm" title="Reinitialiser la session (oublier mes commandes)">Reset</button>
+              <button id="cl-clear-session" class="btn btn-ghost btn-sm" title="Reinitialiser la session">Reset</button>
             </div>
             <div class="card-body card-body-flush">
               <ul id="cl-orders-list" class="order-list"></ul>
@@ -175,7 +175,7 @@
           <div class="card-head between">
             <div>
               <h2>Liste des livreurs</h2>
-              <p class="card-sub">Rafraichi auto toutes les 2s. Cliquer sur un livreur BUSY ouvre l'onglet Livreur.</p>
+              <p class="card-sub">Polling GraphQL toutes les 2s. Click sur BUSY ouvre l'onglet Livreur.</p>
             </div>
             <button id="ad-refresh-drivers" class="btn btn-ghost btn-sm">Rafraichir</button>
           </div>
@@ -193,7 +193,7 @@
           <div class="card-head between">
             <div>
               <h2>Toutes les commandes</h2>
-              <p class="card-sub">Filtres en direct. Bouton Annuler dispo sur les statuts non finaux.</p>
+              <p class="card-sub">Filtres en direct via GraphQL. Bouton Annuler/Supprimer selon le statut.</p>
             </div>
             <button id="ad-refresh-orders" class="btn btn-ghost btn-sm">Rafraichir</button>
           </div>
@@ -207,7 +207,7 @@
                   <option>IN_TRANSIT</option><option>DELIVERED</option><option>CANCELLED</option>
                 </select>
               </div>
-              <div class="form-row"><label>customer_id</label><input id="ad-filter-customer" placeholder="ex: client-ui-..." /></div>
+              <div class="form-row"><label>customer_id</label><input id="ad-filter-customer" placeholder="ex: client-..." /></div>
               <div class="form-row"><label>Recherche libre</label><input id="ad-filter-search" placeholder="nom, id..." /></div>
             </div>
           </div>
@@ -249,7 +249,7 @@
           </dl>
         </div>
 
-        <div class="card-head"><h2>Simulation de deplacement</h2><p class="card-sub">Boutons visuels uniquement. Anime la position GPS du livreur sur la carte (4 sec par trajet).</p></div>
+        <div class="card-head"><h2>Simulation de deplacement</h2><p class="card-sub">Mutations GraphQL updateDriverLocation x16 sur 4 secondes.</p></div>
         <div class="card-body">
           <div class="lv-row">
             <button id="lv-go-pickup" class="btn btn-warn btn-lg">🛵 Aller recuperer</button>
@@ -257,7 +257,7 @@
           </div>
         </div>
 
-        <div class="card-head"><h2>Changer le statut de la commande</h2><p class="card-sub">Boutons metier qui font avancer le statut via Kafka (chaque transition propage cote Client).</p></div>
+        <div class="card-head"><h2>Changer le statut de la commande</h2><p class="card-sub">Mutation advanceDelivery -> propagation Kafka.</p></div>
         <div class="card-body">
           <div class="lv-row">
             <button id="lv-pickup" class="btn btn-primary">✓ J'ai recupere</button>
@@ -274,7 +274,7 @@
 
       <div class="card hidden" id="lv-no-order-card">
         <div class="card-body">
-          <p class="empty-msg">Ce livreur est AVAILABLE et n'a pas de commande en cours.<br />Passez une commande cote Client pour qu'il en recoive une automatiquement.</p>
+          <p class="empty-msg">Ce livreur est AVAILABLE et n'a pas de commande en cours.<br />Passez une commande cote Client.</p>
         </div>
       </div>
     </section>
@@ -283,6 +283,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="app.js"></script>
+  <script src="graphql-app.js"></script>
 </body>
 </html>

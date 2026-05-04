@@ -8,9 +8,8 @@ const express = require('express');
 const PORT = Number(process.env.PORT) || 8081;
 const app = express();
 
-// Redirection vers la racine pour les anciennes URLs (rest.html, graphql.html)
-// suite a la refonte qui a unifie la demo metier sur /.
-app.get(['/rest.html', '/graphql.html'], (_req, res) => res.redirect(301, '/'));
+// Redirection de /rest.html vers / (compat avec liens externes obsoletes)
+app.get('/rest.html', (_req, res) => res.redirect(301, '/'));
 
 app.use(express.static(path.join(__dirname, 'public')));
 

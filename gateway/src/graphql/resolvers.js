@@ -50,6 +50,10 @@ const resolvers = {
     createOrder: (_, { input }) => orderClient.CreateOrder(input),
     cancelOrder: (_, { id, reason }) =>
       orderClient.CancelOrder({ id, reason: reason || '' }),
+    deleteOrder: async (_, { id }) => {
+      await orderClient.DeleteOrder({ id });
+      return true;
+    },
 
     registerDriver: (_, { input }) => driverClient.RegisterDriver(input),
     updateDriverLocation: (_, { input }) =>
@@ -60,6 +64,10 @@ const resolvers = {
         speed_kmh: input.speed_kmh || 0,
         heading_deg: input.heading_deg || 0,
       }),
+    deleteDriver: async (_, { id }) => {
+      await driverClient.DeleteDriver({ id });
+      return true;
+    },
 
     advanceDelivery: (_, args) =>
       trackingClient.AdvanceDeliveryStatus({

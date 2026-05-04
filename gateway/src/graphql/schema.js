@@ -137,9 +137,11 @@ const typeDefs = gql`
   type Mutation {
     createOrder(input: CreateOrderInput!): Order!
     cancelOrder(id: ID!, reason: String): Order!
+    deleteOrder(id: ID!): Boolean!
 
     registerDriver(input: RegisterDriverInput!): Driver!
     updateDriverLocation(input: UpdateLocationInput!): Location!
+    deleteDriver(id: ID!): Boolean!
 
     advanceDelivery(delivery_id: ID!, new_status: String!): Delivery!
   }

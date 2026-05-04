@@ -76,7 +76,27 @@ body {
 .brand-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
 .brand-sub { font-size: 11px; color: #94a3b8; }
 
-.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-right { display: flex; align-items: center; gap: 14px; }
+
+.proto-switch {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--r);
+  padding: 3px;
+  gap: 2px;
+}
+.proto-btn {
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.65);
+  padding: 5px 14px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: all 0.15s;
+}
+.proto-btn:hover { color: #fff; }
+.proto-btn.active { background: rgba(37, 99, 235, 0.85); color: #fff; }
 
 .pill {
   display: inline-flex;
