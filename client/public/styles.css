@@ -568,17 +568,15 @@ body {
 .row-action-btn:disabled { background: var(--border-strong); cursor: not-allowed; opacity: 0.6; }
 
 /* =========================================================
-   LIVREUR ACTIONS GRID
+   LIVREUR ACTIONS - rangees de boutons separees en 2 blocs
    ========================================================= */
-.lv-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+.lv-row {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
-.lv-grid > *:nth-child(5) { grid-column: 1 / -1; }
-.lv-grid > *:nth-child(6) { grid-column: 1 / -1; text-align: center; }
-@media (max-width: 720px) { .lv-grid { grid-template-columns: 1fr; } .lv-grid > *:nth-child(5) { grid-column: auto; } }
+.lv-row .btn { flex: 1; min-width: 180px; }
 
 /* =========================================================
    EMPTY STATES

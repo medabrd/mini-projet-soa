@@ -245,16 +245,22 @@
           </dl>
         </div>
 
-        <div class="card-head"><h2>Actions livreur</h2></div>
+        <div class="card-head"><h2>Simulation de deplacement</h2><p class="card-sub">Boutons visuels uniquement. Anime la position GPS du livreur sur la carte (4 sec par trajet).</p></div>
         <div class="card-body">
-          <div class="lv-grid">
+          <div class="lv-row">
             <button id="lv-go-pickup" class="btn btn-warn btn-lg">🛵 Aller recuperer</button>
-            <button id="lv-pickup" class="btn btn-primary">✓ J'ai recupere</button>
             <button id="lv-go-deliver" class="btn btn-warn btn-lg">🏁 Aller livrer</button>
-            <button id="lv-transit" class="btn btn-primary">✓ Je suis en route</button>
-            <button id="lv-deliver" class="btn btn-success btn-lg">✓ C'est livre</button>
-            <span id="lv-action-status" class="status idle">idle</span>
           </div>
+        </div>
+
+        <div class="card-head"><h2>Changer le statut de la commande</h2><p class="card-sub">Boutons metier qui font avancer le statut via Kafka (chaque transition propage cote Client).</p></div>
+        <div class="card-body">
+          <div class="lv-row">
+            <button id="lv-pickup" class="btn btn-primary">✓ J'ai recupere</button>
+            <button id="lv-transit" class="btn btn-primary">✓ Je suis en route</button>
+            <button id="lv-deliver" class="btn btn-success">✓ C'est livre</button>
+          </div>
+          <div class="actions" style="margin-top:8px"><span id="lv-action-status" class="status idle">idle</span></div>
         </div>
 
         <div class="card-body card-body-flush">

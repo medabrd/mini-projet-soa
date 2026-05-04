@@ -517,7 +517,7 @@ function setupAdmin() {
 // ============================================================
 // ============ INTERFACE LIVREUR ============
 // ============================================================
-const livreurState = { driverId: null, driver: null, delivery: null, animTimer: null };
+const livreurState = { driverId: null, driver: null, delivery: null, animating: false };
 let livreurMap = null;
 let livreurMarker = null;
 let livreurPickupMarker = null;
@@ -616,16 +616,16 @@ async function renderLivreurPanel() {
 }
 
 function updateLivreurButtons(deliveryStatus) {
-  const map = {
-    'lv-go-pickup': deliveryStatus === 'ASSIGNED',
-    'lv-pickup':    deliveryStatus === 'ASSIGNED',
-    'lv-go-deliver': deliveryStatus === 'PICKED_UP',
-    'lv-transit':   deliveryStatus === 'PICKED_UP',
-    'lv-deliver':   deliveryStatus === 'IN_TRANSIT',
-  };
-  for (const [id, enabled] of Object.entries(map)) {
-    document.getElementById(id).disabled = !enabled;
-  }
+  // Boutons de simulation de deplacement : toujours actifs tant que la
+  // livraison est en cours. Aucun rapport avec le statut metier.
+  const moveEnabled = !['DELIVERED', 'CANCELLED'].includes(deliveryStatus);
+  document.getElementById('lv-go-pickup').disabled = !moveEnabled || livreurState.animating;
+  document.getElementById('lv-go-deliver').disabled = !moveEnabled || livreurState.animating;
+
+  // Boutons metier : gates par le statut courant de la delivery.
+  document.getElementById('lv-pickup').disabled = deliveryStatus !== 'ASSIGNED';
+  document.getElementById('lv-transit').disabled = deliveryStatus !== 'PICKED_UP';
+  document.getElementById('lv-deliver').disabled = deliveryStatus !== 'IN_TRANSIT';
 }
 
 function updateLivreurMarker(lat, lng) {
@@ -649,7 +649,12 @@ function updateLivreurMarker(lat, lng) {
 // Animation : interpolation lineaire entre 2 points sur 4 secondes,
 // 16 frames -> 250ms par frame -> 16 PATCH /location au gateway.
 async function animateMove(target) {
-  if (livreurState.animTimer) return;
+  if (livreurState.animating) return;
+  livreurState.animating = true;
+  // Verrouille les deux boutons de simulation pendant le trajet
+  document.getElementById('lv-go-pickup').disabled = true;
+  document.getElementById('lv-go-deliver').disabled = true;
+
   const id = livreurState.driverId;
   const driver = livreurState.driver;
   const start = driver.last_location
@@ -660,27 +665,30 @@ async function animateMove(target) {
   status.className = 'status running';
   status.textContent = 'deplacement...';
 
-  for (let i = 1; i <= FRAMES; i++) {
-    const t = i / FRAMES;
-    const lat = start.lat + (target.lat - start.lat) * t;
-    const lng = start.lng + (target.lng - start.lng) * t;
-    try {
+  try {
+    for (let i = 1; i <= FRAMES; i++) {
+      const t = i / FRAMES;
+      const lat = start.lat + (target.lat - start.lat) * t;
+      const lng = start.lng + (target.lng - start.lng) * t;
       await callGw('PATCH', `/api/drivers/${id}/location`, {
         latitude: lat, longitude: lng,
         speed_kmh: 25 + Math.random() * 10,
         heading_deg: Math.random() * 360,
       });
       updateLivreurMarker(lat, lng);
-    } catch (e) {
-      status.className = 'status fail';
-      status.textContent = e.message;
-      return;
+      await wait(250);
     }
-    await wait(250);
+    livreurState.driver.last_location = { latitude: target.lat, longitude: target.lng };
+    status.className = 'status ok';
+    status.textContent = 'arrive a ' + target.label;
+  } catch (e) {
+    status.className = 'status fail';
+    status.textContent = e.message;
+  } finally {
+    livreurState.animating = false;
+    // Restaure l'etat des boutons selon le statut delivery courant
+    if (livreurState.delivery) updateLivreurButtons(livreurState.delivery.status);
   }
-  livreurState.driver.last_location = { latitude: target.lat, longitude: target.lng };
-  status.className = 'status ok';
-  status.textContent = 'arrive a ' + target.label;
 }
 
 async function advanceLivreurStatus(newStatus) {
