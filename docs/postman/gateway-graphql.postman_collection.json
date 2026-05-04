@@ -225,6 +225,38 @@
             "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
             "description": "Avance la livraison (PICKED_UP / IN_TRANSIT / DELIVERED). Grace au resolver Delivery.order on recupere la commande dans la meme requete. Quelques ms pour que la chaine Kafka delivery.events -> order.events propage le status cote order."
           }
+        },
+        {
+          "name": "Mutation deleteOrder",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation DeleteOrder($id: ID!) {\n  deleteOrder(id: $id)\n}",
+                "variables": "{\n  \"id\": \"{{order_id}}\"\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Supprime definitivement une commande (uniquement si statut DELIVERED ou CANCELLED). Renvoie true si supprimee, erreur 412 sinon."
+          }
+        },
+        {
+          "name": "Mutation deleteDriver",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation DeleteDriver($id: ID!) {\n  deleteDriver(id: $id)\n}",
+                "variables": "{\n  \"id\": \"{{driver_id}}\"\n}"
+              }
+            },
+            "url": { "raw": "{{graphql_url}}", "host": ["{{graphql_url}}"] },
+            "description": "Supprime un livreur de la base (refuse 412 si BUSY pour ne pas orphaner une livraison en cours)."
+          }
         }
       ]
     }
