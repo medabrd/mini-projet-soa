@@ -100,6 +100,34 @@ async function publishOrderPlaced(order) {
   }
 }
 
+// Publie a chaque changement de statut via UpdateOrderStatus. Sert
+// notamment a driver-service pour nettoyer sa file d'attente quand une
+// commande sort de l'etat PENDING par un autre chemin que order.cancelled
+// (ex: passage manuel a DELIVERED via l'API admin).
+async function publishOrderStatusUpdated(order) {
+  if (!producerReady) return;
+  try {
+    await producer.send({
+      topic: ORDER_TOPIC,
+      messages: [
+        {
+          key: order.id,
+          value: JSON.stringify({
+            type: 'order.status-updated',
+            order_id: order.id,
+            new_status: order.status,
+            assigned_driver_id: order.assigned_driver_id || '',
+            timestamp: new Date().toISOString(),
+          }),
+        },
+      ],
+    });
+    console.log(`Event publie: order.status-updated ${order.id} -> ${order.status}`);
+  } catch (err) {
+    console.error('Echec publish order.status-updated:', err.message);
+  }
+}
+
 async function publishOrderCancelled(orderId, reason) {
   if (!producerReady) return;
   try {
@@ -166,4 +194,5 @@ module.exports = {
   disconnect,
   publishOrderPlaced,
   publishOrderCancelled,
+  publishOrderStatusUpdated,
 };

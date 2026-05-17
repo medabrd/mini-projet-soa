@@ -144,6 +144,19 @@ async function handleOrderEvent(evt) {
     return;
   }
 
+  // Si une commande sort de PENDING par un autre chemin (ex: passage manuel
+  // a DELIVERED via l'API admin), on la retire aussi de la file pour eviter
+  // qu'un futur RegisterDriver ne se voie attribuer une commande deja close.
+  if (evt.type === 'order.status-updated') {
+    if (!evt.order_id || evt.new_status === 'PENDING') return;
+    const idx = pendingOrders.findIndex(p => p.order_id === evt.order_id);
+    if (idx >= 0) {
+      pendingOrders.splice(idx, 1);
+      console.log(`Order ${evt.order_id} retiree de la file (status=${evt.new_status}, queue=${pendingOrders.length})`);
+    }
+    return;
+  }
+
   if (evt.type !== 'order.placed') {
     return;
   }

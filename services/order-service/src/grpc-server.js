@@ -65,6 +65,9 @@ const handlers = {
         call.request.assigned_driver_id,
       );
       if (!order) return callback(notFoundError());
+      // fire-and-forget : notifie les abonnes (notamment driver-service qui
+      // nettoie sa file d'attente si la commande sort de PENDING)
+      kafka.publishOrderStatusUpdated(order);
       callback(null, order);
     } catch (err) {
       callback(internalError(err));
