@@ -265,7 +265,7 @@ Les positions GPS arrivent en flux continu (~250ms). RxDB avec ses observables `
 Pour rester simple : Apollo Server est configuré sans WebSocket. Le suivi temps réel côté GraphQL se fait par polling (1.5s) sur les statuts. Le streaming GPS reste sur le SSE REST partagé. Subscriptions auraient demandé d'ajouter `graphql-ws` et un serveur WebSocket séparé.
 
 **File d'attente des orders sans driver**
-driver-service garde un tableau in-memory `pendingOrders[]` qui buffer les `order.placed` arrivés sans driver disponible. Vidé en FIFO à chaque `RegisterDriver` ou à chaque libération de driver suite à `delivery.delivered`. Volatile au restart, mais cohérent avec le choix RxDB en mémoire.
+driver-service garde un tableau in-memory `pendingOrders[]` qui buffer les `order.placed` arrivés sans driver disponible. Vidé en FIFO à chaque `RegisterDriver` ou à chaque libération de driver suite à `delivery.delivered`. Une entrée est aussi retirée si la commande sort de PENDING par un autre chemin : `order.cancelled` ou `order.status-updated` (ex : passage manuel à DELIVERED via l'API admin) — ça évite qu'un futur livreur ne se voie attribuer une commande déjà close. Volatile au restart, mais cohérent avec le choix RxDB en mémoire.
 
 
 Crédits
