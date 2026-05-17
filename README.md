@@ -271,4 +271,4 @@ driver-service garde un tableau in-memory `pendingOrders[]` qui buffer les `orde
 Crédits
 -------
 
-Med Abroud — étudiant en 2ème année Master, cours SoA et Microservices, M. Salah Gontara, AU 2025-2026.
+Med Abroud — étudiant en 4ème année Génie Logiciel, groupe 1, cours SoA et Microservices, M. Salah Gontara, AU 2025-2026.
