@@ -28,7 +28,7 @@ Comme il n'y a pas de RPC pour créer une delivery, il faut en provoquer une via
 2. Attendre 1-2 secondes (le temps que les events traversent Kafka)
 3. Une delivery est créée automatiquement dans tracking-service avec status `ASSIGNED`
 
-Note : driver-service crée 3 livreurs par défaut au démarrage si sa base est vide (Karim, Sami, Anis), donc pas besoin de faire `RegisterDriver` à la main avant un `CreateOrder` — l'auto-assignation trouvera toujours un livreur disponible.
+Note : la base driver-service démarre **vide** (RxDB en mémoire, aucun seed). Avant un `CreateOrder` qui doit aboutir à une delivery `ASSIGNED`, il faut d'abord faire au moins un `RegisterDriver` dans la collection driver-service. Sinon la commande reste `PENDING` côté order-service (mise en file d'attente côté driver-service jusqu'à ce qu'un livreur soit enregistré).
 
 Pour récupérer l'`id` de la delivery créée, faire un `ListDeliveries` (voir 2 ci-dessous).
 
@@ -161,7 +161,7 @@ Pousse l'état complet de la delivery au client à chaque changement de status. 
 Scénario de test complet
 -------------------------
 
-1. Déclencher une commande : `CreateOrder` dans order-service collection (les drivers seed sont déjà créés au démarrage)
+1. Déclencher une commande : d'abord `RegisterDriver` dans driver-service collection (pour avoir un livreur dispo), puis `CreateOrder` dans order-service collection
 2. Attendre 1-2 sec, puis `ListDeliveries` ici → la delivery doit apparaître avec status `ASSIGNED` (ou `PENDING_ASSIGNMENT` si le driver.assigned n'a pas encore été processé)
 3. Noter le `id` de la delivery
 4. `GetDelivery` avec cet id → confirme les données

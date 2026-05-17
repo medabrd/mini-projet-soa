@@ -55,9 +55,9 @@ Liste des services et leurs ports
 | Service | Port gRPC | Proto |
 |---------|-----------|-------|
 | order-service | 50051 | `proto/order.proto` |
-| driver-service | 50052 (à venir) | `proto/driver.proto` |
-| tracking-service | 50053 (à venir) | `proto/tracking.proto` |
-| API Gateway | 3000 REST + 4000 GraphQL (à venir) | — |
+| driver-service | 50052 | `proto/driver.proto` |
+| tracking-service | 50053 | `proto/tracking.proto` |
+| API Gateway | 3000 (REST + GraphQL sur le même port) | — |
 
 
 Fichiers dans ce dossier

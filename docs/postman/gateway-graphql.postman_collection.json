@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "gateway-graphql",
-    "description": "Toutes les operations GraphQL exposees par l'API Gateway sur http://localhost:3000/graphql : 7 queries + 5 mutations. Les resolvers field-level joignent en une seule requete les 3 microservices via gRPC (order, driver, delivery + history). Variables a renseigner : order_id, driver_id, delivery_id apres les premieres requetes.",
+    "description": "Toutes les operations GraphQL exposees par l'API Gateway sur http://localhost:3000/graphql : 8 queries + 7 mutations. Les resolvers field-level joignent en une seule requete les 3 microservices via gRPC (order, driver, delivery + history). Variables a renseigner : order_id, driver_id, delivery_id apres les premieres requetes.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
