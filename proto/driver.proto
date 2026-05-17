@@ -1,50 +1,107 @@
-syntax = "proto3";
+// =========================================================================
+//  driver.proto - Contrat gRPC du microservice driver-service
+// =========================================================================
+//
+//  Role : decrit les RPCs exposes par driver-service. Gere le cycle de
+//  vie des livreurs (enregistrement, position GPS, disponibilite) ainsi
+//  qu'un RPC server-streaming pour pousser les positions en temps reel.
+//
+//  Pour les conventions generales (syntax, package, field tags, enum 0)
+//  voir les commentaires detailles dans order.proto - meme regles ici.
+// =========================================================================
 
+syntax = "proto3";
 package driver;
 
+
+// -------------------------------------------------------------------------
+//  Service
+// -------------------------------------------------------------------------
+//  4 RPCs unary classiques + 1 server-streaming.
+//
+//  Server-streaming = le client envoie 1 requete, le serveur garde la
+//  connexion ouverte et peut renvoyer 0, 1 ou N messages au fil du temps.
+//  Le client recoit les messages au fur et a mesure (pas besoin de
+//  rappeler). Cas d'usage typique : "tiens-moi au courant".
+// -------------------------------------------------------------------------
 service DriverService {
+  // Enregistre un nouveau livreur. Genere un UUID, status=AVAILABLE.
+  // Apres succes, tente d'assigner immediatement une commande en attente
+  // (queue pendingOrders).
   rpc RegisterDriver(RegisterDriverRequest) returns (Driver);
+
+  // Recupere un livreur par id.
   rpc GetDriver(GetDriverRequest) returns (Driver);
+
+  // Liste tous les livreurs avec status=AVAILABLE (pas occupes, en ligne).
   rpc ListAvailableDrivers(ListAvailableDriversRequest) returns (ListDriversResponse);
+
+  // Met a jour la position GPS d'un livreur. Declenche aussi un push sur
+  // les abonnes du stream StreamDriverLocation (via observable RxDB).
   rpc UpdateLocation(UpdateLocationRequest) returns (Location);
+
+  // Supprime un livreur. Refusee si BUSY (pour ne pas orphaner une
+  // livraison en cours).
   rpc DeleteDriver(DeleteDriverRequest) returns (DeleteDriverResponse);
 
-  // Server-streaming : pousse la position du livreur a chaque mise a jour
+  // Server-streaming : le client s'abonne aux positions d'UN livreur.
+  // A chaque UpdateLocation sur ce livreur, le serveur push la nouvelle
+  // Location dans le stream. Implemente via observable RxDB :
+  // chaque modification du document declenche un emit.
+  // Le stream se ferme quand le client coupe (call.cancel cote client).
   rpc StreamDriverLocation(StreamLocationRequest) returns (stream Location);
 }
 
+
+// -------------------------------------------------------------------------
+//  Enum : status d'un livreur
+// -------------------------------------------------------------------------
+//  Cycle typique : (creation) AVAILABLE -> assignation -> BUSY ->
+//  livraison terminee -> AVAILABLE. OFFLINE est prevu mais pas utilise
+//  par les RPCs actuels (reserve pour evolution : driver qui se deconnecte).
+// -------------------------------------------------------------------------
 enum DriverStatus {
-  DRIVER_STATUS_UNSPECIFIED = 0;
-  AVAILABLE = 1;
-  BUSY = 2;
-  OFFLINE = 3;
+  DRIVER_STATUS_UNSPECIFIED = 0;       // defaut, ne devrait jamais apparaitre en pratique
+  AVAILABLE = 1;                       // pret a prendre une commande
+  BUSY = 2;                            // en train de livrer (current_order_id rempli)
+  OFFLINE = 3;                         // pas connecte, ignore par l'auto-assignation
 }
 
+
+// -------------------------------------------------------------------------
+//  Messages
+// -------------------------------------------------------------------------
+
+// Position GPS instantanee d'un livreur.
+// Utilisee comme reponse de UpdateLocation et chaque message du stream
+// StreamDriverLocation. Aussi imbrique dans Driver.last_location.
 message Location {
   string driver_id = 1;
-  double latitude = 2;
+  double latitude = 2;                 // degres decimaux
   double longitude = 3;
-  double speed_kmh = 4;
-  double heading_deg = 5;
-  string timestamp = 6;
+  double speed_kmh = 4;                // vitesse instantanee (0 si arret)
+  double heading_deg = 5;              // cap en degres (0 = nord, 90 = est)
+  string timestamp = 6;                // ISO 8601, rempli cote serveur
 }
 
+// Un livreur. Renvoye par la plupart des RPCs.
 message Driver {
   string id = 1;
   string name = 2;
   string phone = 3;
-  string vehicle_type = 4;
+  string vehicle_type = 4;             // "scooter", "velo", "voiture"...
   DriverStatus status = 5;
-  string current_order_id = 6;
-  Location last_location = 7;
+  string current_order_id = 6;         // "" si AVAILABLE, l'id sinon
+  Location last_location = 7;          // null si jamais mis a jour
   string created_at = 8;
   string updated_at = 9;
 }
 
+// Requete d'enregistrement. id genere cote serveur.
 message RegisterDriverRequest {
   string name = 1;
-  string phone = 2;
-  string vehicle_type = 3;
+  string phone = 2;                    // optionnel ("" autorise)
+  string vehicle_type = 3;             // optionnel
 }
 
 message GetDriverRequest {
@@ -52,7 +109,7 @@ message GetDriverRequest {
 }
 
 message ListAvailableDriversRequest {
-  int32 limit = 1;
+  int32 limit = 1;                     // 0 = defaut serveur (50)
 }
 
 message ListDriversResponse {
@@ -60,14 +117,17 @@ message ListDriversResponse {
   int32 total = 2;
 }
 
+// Mise a jour de position. Le timestamp est mis cote serveur, pas dans la
+// requete : evite les decalages d'horloge entre clients.
 message UpdateLocationRequest {
   string driver_id = 1;
   double latitude = 2;
   double longitude = 3;
-  double speed_kmh = 4;
-  double heading_deg = 5;
+  double speed_kmh = 4;                // optionnel (0 par defaut)
+  double heading_deg = 5;              // optionnel
 }
 
+// Requete d'abonnement au stream de positions. Une seule fois au debut.
 message StreamLocationRequest {
   string driver_id = 1;
 }

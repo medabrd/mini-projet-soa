@@ -1,45 +1,115 @@
-syntax = "proto3";
+// =========================================================================
+//  tracking.proto - Contrat gRPC du microservice tracking-service
+// =========================================================================
+//
+//  Role : decrit les RPCs exposes par tracking-service. Suit le cycle de
+//  vie d'une livraison (Delivery), garde son historique d'evenements,
+//  permet d'avancer son statut et de l'observer en temps reel.
+//
+//  Particularite metier : tracking-service est PRINCIPALEMENT event-driven.
+//  Les Delivery sont CREES AUTOMATIQUEMENT a partir des events Kafka
+//  publies par order-service et driver-service. Il n'y a donc pas de RPC
+//  "CreateDelivery" - une delivery existe des qu'une commande est creee.
+//
+//  Pour les conventions Protobuf de base (syntax, package, field tags,
+//  enum 0), voir les commentaires detailles dans order.proto.
+// =========================================================================
 
+syntax = "proto3";
 package tracking;
 
+
+// -------------------------------------------------------------------------
+//  Service
+// -------------------------------------------------------------------------
+//  4 RPCs de consultation/action + 1 server-streaming pour le watch live.
+//
+//  Note : pas de RPC "CreateDelivery" - les deliveries naissent via Kafka.
+//  Pas de RPC "DeleteDelivery" non plus - les deliveries sont liees a une
+//  commande, leur duree de vie suit celle de la commande.
+// -------------------------------------------------------------------------
 service TrackingService {
+  // Recupere une livraison par son id.
   rpc GetDelivery(GetDeliveryRequest) returns (Delivery);
+
+  // Liste les livraisons avec filtres (status, driver_id) et pagination.
   rpc ListDeliveries(ListDeliveriesRequest) returns (ListDeliveriesResponse);
+
+  // Renvoie tous les events qui ont touche cette livraison (creation,
+  // assignation, updates de position, advance status, cancellation...).
+  // Utile pour reconstruire la chronologie d'une livraison.
   rpc GetDeliveryHistory(GetDeliveryHistoryRequest) returns (DeliveryHistoryResponse);
+
+  // Fait avancer le statut manuellement (typiquement declenche par le
+  // livreur via l'UI : "j'ai recupere", "j'ai livre", etc.).
+  // Publie un event delivery.<nouveau-status> sur Kafka que order-service
+  // consomme pour synchroniser le statut de la commande correspondante.
   rpc AdvanceDeliveryStatus(AdvanceDeliveryStatusRequest) returns (Delivery);
 
-  // Server-streaming : pousse l'etat de la livraison a chaque changement
+  // Server-streaming : le client s'abonne aux changements d'UNE livraison.
+  // A chaque modification (advance status, cancel...), le serveur push la
+  // nouvelle version dans le stream.
+  // Implemente via un EventEmitter interne au repo (pas d'observables
+  // natifs pour SQLite, on fait notre propre bus a la place).
   rpc WatchDelivery(WatchDeliveryRequest) returns (stream Delivery);
 }
 
+
+// -------------------------------------------------------------------------
+//  Enum : status d'une livraison
+// -------------------------------------------------------------------------
+//  Similaire a OrderStatus dans order.proto mais avec une nuance :
+//  PENDING_ASSIGNMENT remplace PENDING pour bien marquer qu'on attend
+//  un livreur (cote tracking, le concept "commande en attente" n'a pas
+//  vraiment de sens : il y a deja une commande, on attend juste un driver).
+//
+//  Les autres valeurs sont alignees avec OrderStatus pour permettre le
+//  mapping direct via DELIVERY_TO_STATUS dans order-service/kafka.js.
+// -------------------------------------------------------------------------
 enum DeliveryStatus {
   DELIVERY_STATUS_UNSPECIFIED = 0;
-  PENDING_ASSIGNMENT = 1;
-  ASSIGNED = 2;
-  PICKED_UP = 3;
-  IN_TRANSIT = 4;
-  DELIVERED = 5;
-  CANCELLED = 6;
+  PENDING_ASSIGNMENT = 1;              // delivery creee, en attente d'un driver
+  ASSIGNED = 2;                        // driver assigne
+  PICKED_UP = 3;                       // commande recuperee chez le marchand
+  IN_TRANSIT = 4;                      // en route vers le client
+  DELIVERED = 5;                       // livree (etat final)
+  CANCELLED = 6;                       // annulee (etat final)
 }
 
+
+// -------------------------------------------------------------------------
+//  Messages
+// -------------------------------------------------------------------------
+
+// Une livraison. Type le plus important du service.
+// Les champs customer_* et delivery_address sont DUPLIQUES depuis Order :
+// principe microservices = chaque service possede sa donnee, pas de
+// jointure cross-service en SQL. On les copie au moment de la creation
+// via l'event order.placed. Si la commande change apres, la delivery ne
+// suit pas automatiquement (et c'est OK pour ce domaine).
 message Delivery {
-  string id = 1;
-  string order_id = 2;
-  string customer_id = 3;
+  string id = 1;                       // UUID propre a la delivery
+  string order_id = 2;                 // pointe vers Order.id (cross-service)
+  string customer_id = 3;              // duplique pour eviter jointure
   string customer_name = 4;
   string delivery_address = 5;
-  string driver_id = 6;
-  string driver_name = 7;
+  string driver_id = 6;                // "" tant que pas assignee
+  string driver_name = 7;              // duplique aussi (pour affichage rapide)
   DeliveryStatus status = 8;
   string created_at = 9;
   string updated_at = 10;
 }
 
+// Un evenement historique sur une delivery. Stocke en SQLite.
+// event_data_json contient les donnees specifiques au type d'event
+// (ex: pour "location-update" -> {"latitude": ..., "longitude": ...}).
+// Stocke en JSON brut pour rester flexible sans devoir modifier le proto
+// a chaque nouveau type d'event.
 message DeliveryEvent {
-  int64 id = 1;
+  int64 id = 1;                        // auto-increment SQL
   string delivery_id = 2;
-  string event_type = 3;
-  string event_data_json = 4;
+  string event_type = 3;               // "created", "assigned", "picked-up", "in-transit", "delivered", "cancelled", "location-update"
+  string event_data_json = 4;          // payload arbitraire en JSON string
   string created_at = 5;
 }
 
@@ -47,10 +117,11 @@ message GetDeliveryRequest {
   string id = 1;
 }
 
+// Filtres optionnels. UNSPECIFIED ou "" = pas de filtre.
 message ListDeliveriesRequest {
-  DeliveryStatus status = 1;
-  string driver_id = 2;
-  int32 limit = 3;
+  DeliveryStatus status = 1;           // UNSPECIFIED = tous
+  string driver_id = 2;                // "" = tous drivers
+  int32 limit = 3;                     // 0 = defaut serveur
   int32 offset = 4;
 }
 
@@ -67,11 +138,14 @@ message DeliveryHistoryResponse {
   repeated DeliveryEvent events = 1;
 }
 
+// Avancement manuel du statut. Le serveur valide la transition
+// (refuse par exemple PICKED_UP -> ASSIGNED).
 message AdvanceDeliveryStatusRequest {
   string delivery_id = 1;
   DeliveryStatus new_status = 2;
 }
 
+// Requete d'abonnement au watch. Un seul message au debut du stream.
 message WatchDeliveryRequest {
   string delivery_id = 1;
 }

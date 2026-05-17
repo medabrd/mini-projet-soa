@@ -1,83 +1,182 @@
+// =========================================================================
+//  order.proto - Contrat gRPC du microservice order-service
+// =========================================================================
+//
+//  Role : decrit les RPCs exposes par order-service et la forme des
+//  messages echanges entre l'API Gateway (client gRPC) et le service.
+//
+//  Partage : ce fichier est lu PAR LES DEUX cotes (client et serveur).
+//  Le serveur s'en sert pour deserialiser les requetes et serialiser les
+//  reponses. Le client fait l'inverse. Sans accord exact sur le contenu,
+//  les appels echouent.
+//
+//  Genere : pas de generation de code preliminaire ici - on utilise
+//  @grpc/proto-loader qui lit ce fichier au runtime (lazy parsing).
+// =========================================================================
+
 syntax = "proto3";
+// "proto3" est la version moderne du langage Protobuf (depuis 2016). Apporte :
+//   - tous les champs sont implicitement optionnels (pas de "required")
+//   - les champs non renseignes prennent leur valeur par defaut
+//     (string = "", int32 = 0, bool = false, message imbrique = null)
+//   - pas de support natif du NULL pour les types scalaires : un string vide
+//     EST l'absence de valeur
 
 package order;
+// Namespace logique. Le code JS y accede via `proto.order.OrderService`
+// apres le `grpc.loadPackageDefinition(...)`. Evite les collisions entre
+// services (order.Driver != driver.Driver par exemple).
 
+
+// -------------------------------------------------------------------------
+//  Service : la definition des RPCs
+// -------------------------------------------------------------------------
+//  Un "service" gRPC = un ensemble de methodes appelables a distance.
+//  Chaque ligne `rpc Foo(Bar) returns (Baz)` declare :
+//    - le nom de la methode (Foo)
+//    - le type du message d'entree (Bar)
+//    - le type du message de sortie (Baz)
+//
+//  Si la reponse est prefixee `stream`, c'est un server-streaming (le serveur
+//  garde la connexion ouverte et peut pousser plusieurs reponses).
+//  Ici toutes les methodes sont "unary" (1 requete -> 1 reponse).
+// -------------------------------------------------------------------------
 service OrderService {
+  // Cree une nouvelle commande. Le serveur genere un UUID, calcule le total,
+  // met status=PENDING, persiste, et publie un event Kafka order.placed.
   rpc CreateOrder(CreateOrderRequest) returns (Order);
+
+  // Recupere une commande par son id. Retourne NOT_FOUND si inconnue.
   rpc GetOrder(GetOrderRequest) returns (Order);
+
+  // Liste les commandes avec filtres optionnels (customer_id, status) et
+  // pagination (limit + offset).
   rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+
+  // Change le status d'une commande, optionnellement avec un driver assigne.
+  // Publie un event order.status-updated pour notifier les autres services.
   rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (Order);
+
+  // Marque une commande comme CANCELLED. Refusee si deja DELIVERED.
+  // Publie un event order.cancelled.
   rpc CancelOrder(CancelOrderRequest) returns (Order);
+
+  // Supprime DEFINITIVEMENT une commande. Autorisee seulement si la commande
+  // est dans un etat final (DELIVERED ou CANCELLED). Pas d'event publie.
   rpc DeleteOrder(DeleteOrderRequest) returns (DeleteOrderResponse);
 }
 
+
+// -------------------------------------------------------------------------
+//  Enum : valeurs possibles du status d'une commande
+// -------------------------------------------------------------------------
+//  Regles proto3 pour les enums :
+//    - la 1re valeur DOIT etre 0 (convention obligatoire)
+//    - elle sert de "default" implicite, c'est pourquoi on l'appelle
+//      <ENUM>_UNSPECIFIED : si un client ne renseigne pas le champ, on a
+//      cette valeur sentinelle au lieu de PENDING (qui aurait ete trompeur)
+//    - les autres valeurs commencent a 1 et continuent
+// -------------------------------------------------------------------------
 enum OrderStatus {
-  ORDER_STATUS_UNSPECIFIED = 0;
-  PENDING = 1;
-  ASSIGNED = 2;
-  PICKED_UP = 3;
-  IN_TRANSIT = 4;
-  DELIVERED = 5;
-  CANCELLED = 6;
+  ORDER_STATUS_UNSPECIFIED = 0;  // valeur par defaut, equivalent du "null"
+  PENDING = 1;                   // creee, en attente d'un livreur
+  ASSIGNED = 2;                  // un livreur l'a prise
+  PICKED_UP = 3;                 // recuperee chez le marchand
+  IN_TRANSIT = 4;                // en route vers le client
+  DELIVERED = 5;                 // livree (etat final)
+  CANCELLED = 6;                 // annulee (etat final)
 }
 
+
+// -------------------------------------------------------------------------
+//  Messages : la forme des donnees echangees
+// -------------------------------------------------------------------------
+//  Chaque champ a 3 elements : <type> <nom> = <numero>;
+//
+//  Le numero est CRUCIAL : c'est le "field tag" qui identifie le champ
+//  dans l'encodage binaire. Une fois publie en prod :
+//    - on ne change JAMAIS le numero d'un champ existant (casserait les
+//      anciens clients qui ne sauraient plus deserialiser)
+//    - pour supprimer un champ, on le marque "reserved" pour qu'il ne soit
+//      jamais reutilise par accident
+//    - on peut ajouter de nouveaux champs avec un nouveau numero, les vieux
+//      clients les ignoreront en silence (compatibilite ascendante)
+//
+//  Numeros 1-15 sont encodes sur 1 octet (gain de place). Reserves aux
+//  champs frequents. Numeros 16+ utilisent 2 octets.
+// -------------------------------------------------------------------------
+
+// Un item dans une commande (1 ligne du panier).
 message OrderItem {
   string product_name = 1;
   int32 quantity = 2;
   double unit_price = 3;
 }
 
+// Une commande complete. C'est le type renvoye par la plupart des RPCs.
 message Order {
-  string id = 1;
+  string id = 1;                       // UUID genere cote serveur
   string customer_id = 2;
   string customer_name = 3;
   string delivery_address = 4;
-  repeated OrderItem items = 5;
-  double total_amount = 6;
-  OrderStatus status = 7;
-  string assigned_driver_id = 8;
-  string created_at = 9;
+  repeated OrderItem items = 5;        // "repeated" = liste/tableau
+  double total_amount = 6;             // calcule cote serveur (sum quantity*price)
+  OrderStatus status = 7;              // enum defini plus haut
+  string assigned_driver_id = 8;       // "" si pas encore assigne (proto3 pas de null)
+  string created_at = 9;               // format ISO 8601 (string par simplicite)
   string updated_at = 10;
 }
 
+// Requete pour creer une commande. Pas d'id ni de status : c'est le serveur
+// qui les genere. total_amount aussi (a partir des items).
 message CreateOrderRequest {
   string customer_id = 1;
   string customer_name = 2;
   string delivery_address = 3;
-  repeated OrderItem items = 4;
+  repeated OrderItem items = 4;        // au moins 1 item requis (verifie cote serveur)
 }
 
+// Requete simple pour recuperer une commande par id.
 message GetOrderRequest {
   string id = 1;
 }
 
+// Filtres optionnels pour lister. Tous les champs absents = pas de filtre.
+// Si status = ORDER_STATUS_UNSPECIFIED (0), le filtre status est ignore.
 message ListOrdersRequest {
-  string customer_id = 1;
-  OrderStatus status = 2;
-  int32 limit = 3;
-  int32 offset = 4;
+  string customer_id = 1;              // "" = tous clients
+  OrderStatus status = 2;              // UNSPECIFIED = tous statuts
+  int32 limit = 3;                     // 0 = defaut serveur (100)
+  int32 offset = 4;                    // 0 = depuis le debut
 }
 
+// Reponse pagine. `total` = total apres filtres (utile pour pagination).
 message ListOrdersResponse {
   repeated Order orders = 1;
   int32 total = 2;
 }
 
+// Mise a jour du status. `assigned_driver_id` optionnel : si "" on garde
+// l'ancienne valeur, sinon on ecrase.
 message UpdateOrderStatusRequest {
   string id = 1;
   OrderStatus status = 2;
-  string assigned_driver_id = 3;
+  string assigned_driver_id = 3;       // "" = ne pas toucher au driver
 }
 
+// Annulation avec raison libre (pour audit/historique).
 message CancelOrderRequest {
   string id = 1;
   string reason = 2;
 }
 
+// Suppression definitive.
 message DeleteOrderRequest {
   string id = 1;
 }
 
+// Reponse minimaliste : juste un boolean de confirmation.
+// Pourquoi pas Empty ? Pour pouvoir etendre plus tard sans casser la signature.
 message DeleteOrderResponse {
   bool deleted = 1;
 }
