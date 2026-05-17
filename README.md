@@ -229,7 +229,7 @@ soa/
 Postman
 -------
 
-Lien vers le workspace public : **(à remplir après création)**
+Lien vers le workspace public : **https://www.postman.com/abroudabroud1992-8018244/workspace/med-abroud-s-workspace**
 
 Le workspace contient **5 collections** :
 
