@@ -56,6 +56,9 @@ Body : `{ "status": "ASSIGNED", "assigned_driver_id": "driver-42" }`
 **POST /api/orders/:id/cancel** (annuler)
 Body : `{ "reason": "Client a change d'avis" }`
 
+**DELETE /api/orders/:id** (supprimer définitivement — admin)
+→ Réponse : `{ "deleted": true }`. Refusée avec code **412 Precondition Failed** si la commande n'est pas DELIVERED ou CANCELLED.
+
 
 ### Drivers
 
@@ -76,6 +79,9 @@ Body :
 **GET /api/drivers/:id/stream** (Server-Sent Events qui relaie le streaming gRPC)
 → une connexion HTTP qui reste ouverte, chaque update de position arrive comme un message SSE.
 Tester en navigateur ou avec `curl -N http://localhost:3000/api/drivers/<id>/stream`.
+
+**DELETE /api/drivers/:id** (supprimer — admin)
+→ Réponse : `{ "deleted": true }`. Refusée avec code **412 Precondition Failed** si le livreur est BUSY.
 
 
 ### Deliveries
@@ -226,7 +232,7 @@ Pour tester dans Postman
 
 Contrairement au gRPC, REST et GraphQL sont parfaitement supportés par le format Postman v2.1. **Deux collections JSON sont fournies dans ce dossier**, prêtes à importer :
 
-- `gateway-rest.postman_collection.json` — 16 requêtes REST organisées en 4 dossiers (Health, Orders, Drivers, Deliveries) incluant les endpoints SSE
+- `gateway-rest.postman_collection.json` — 18 requêtes REST organisées en 4 dossiers (Health, Orders, Drivers, Deliveries) incluant les endpoints SSE et les DELETE admin
 - `gateway-graphql.postman_collection.json` — 5 opérations GraphQL (3 queries + 2 mutations) avec joins cross-services
 
 Procédure :

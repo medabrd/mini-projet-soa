@@ -181,6 +181,33 @@ Annule une commande. Échec si la commande est déjà livrée.
 → Si Kafka tourne, un event `order.cancelled` est publié sur `order.events`.
 
 
+6. DeleteOrder
+--------------
+
+Supprime définitivement une commande de la base. **Refusée** si la commande n'est pas dans un état final (DELIVERED ou CANCELLED) — ça évite de faire disparaître une commande active dont la chaîne Kafka serait en cours.
+
+**Requête :**
+
+```json
+{
+  "id": "<order id>"
+}
+```
+
+**Réponse attendue (succès) :**
+
+```json
+{
+  "deleted": true
+}
+```
+
+**Erreur si ID inconnu :** code `NOT_FOUND`, message "Commande introuvable".
+**Erreur si commande active :** code `FAILED_PRECONDITION`, message "Suppression autorisee uniquement pour les commandes DELIVERED ou CANCELLED".
+
+→ Pas d'event Kafka publié sur suppression (c'est une opération admin locale, pas un changement d'état métier).
+
+
 Scénario de test complet (à exécuter dans cet ordre)
 -----------------------------------------------------
 
@@ -191,6 +218,8 @@ Scénario de test complet (à exécuter dans cet ordre)
 5. `GetOrder` à nouveau → status est bien ASSIGNED, driver présent, updated_at a changé
 6. `CancelOrder` avec une raison → status devient CANCELLED
 7. `GetOrder` une dernière fois → confirme l'annulation et que updated_at est encore plus récent
+8. `DeleteOrder` sur l'id annulé → `{ "deleted": true }`
+9. `GetOrder` une dernière fois → code `NOT_FOUND` (la commande n'existe plus)
 
 Si tous ces appels passent dans l'ordre, le service est fonctionnel de bout en bout côté CRUD gRPC.
 

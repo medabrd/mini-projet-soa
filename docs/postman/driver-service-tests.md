@@ -137,6 +137,33 @@ C'est le RPC bonus : le serveur **garde la connexion ouverte** et pousse une nou
 Si Postman ne supporte pas bien l'affichage des messages streaming au-delà du premier, utiliser `node test-client.js` qui couvre ce cas et affiche les positions reçues en temps réel.
 
 
+6. DeleteDriver
+---------------
+
+Supprime un livreur de la base. **Refusée** si le livreur est BUSY (en cours de livraison) — ça éviterait d'orphaner une delivery active.
+
+**Requête :**
+
+```json
+{
+  "id": "<id du livreur>"
+}
+```
+
+**Réponse attendue (succès) :**
+
+```json
+{
+  "deleted": true
+}
+```
+
+**Erreur si ID inconnu :** code `NOT_FOUND`, message "Livreur introuvable".
+**Erreur si livreur BUSY :** code `FAILED_PRECONDITION`, message "Livreur BUSY : impossible de supprimer un livreur en cours de livraison".
+
+→ Si on veut supprimer un livreur occupé, il faut d'abord libérer sa delivery (la marquer DELIVERED ou CANCELLED côté tracking-service), ce qui le repassera AVAILABLE via la chaîne Kafka, puis on peut supprimer.
+
+
 Scénario de test complet (à exécuter dans cet ordre)
 -----------------------------------------------------
 
@@ -147,6 +174,8 @@ Scénario de test complet (à exécuter dans cet ordre)
 5. `StreamDriverLocation` dans un onglet séparé, laissé ouvert
 6. Refaire `UpdateLocation` avec une autre lat/lng → la nouvelle position apparaît dans l'onglet streaming
 7. Annuler le stream
+8. `DeleteDriver` → `{ "deleted": true }` (le livreur n'est pas BUSY car aucune commande ne lui a été assignée dans ce scénario)
+9. `GetDriver` → code `NOT_FOUND`
 
 
 Intégration Kafka avec order-service

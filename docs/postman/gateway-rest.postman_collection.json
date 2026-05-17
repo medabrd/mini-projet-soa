@@ -86,6 +86,15 @@
             },
             "url": { "raw": "{{base_url}}/api/orders/{{order_id}}/cancel", "host": ["{{base_url}}"], "path": ["api", "orders", "{{order_id}}", "cancel"] }
           }
+        },
+        {
+          "name": "DELETE /api/orders/:id (DeleteOrder)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/orders/{{order_id}}", "host": ["{{base_url}}"], "path": ["api", "orders", "{{order_id}}"] },
+            "description": "Supprime definitivement une commande. Refuse avec 412 Precondition Failed si elle n'est pas DELIVERED ou CANCELLED."
+          }
         }
       ]
     },
@@ -144,6 +153,15 @@
             "header": [{ "key": "Accept", "value": "text/event-stream" }],
             "url": { "raw": "{{base_url}}/api/drivers/{{driver_id}}/stream", "host": ["{{base_url}}"], "path": ["api", "drivers", "{{driver_id}}", "stream"] },
             "description": "Server-Sent Events. La connexion HTTP reste ouverte, chaque update de position arrive comme un message SSE. A tester avec curl -N ou en navigateur."
+          }
+        },
+        {
+          "name": "DELETE /api/drivers/:id (DeleteDriver)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/drivers/{{driver_id}}", "host": ["{{base_url}}"], "path": ["api", "drivers", "{{driver_id}}"] },
+            "description": "Supprime un livreur. Refuse avec 412 Precondition Failed si BUSY."
           }
         }
       ]
