@@ -1,11 +1,45 @@
+// =========================================================================
+//  kafka.js - Couche integration Kafka du microservice driver-service
+// =========================================================================
+//
+//  Role : LE PLUS COMPLEXE des kafka.js du projet. Driver-service est le
+//  "cerveau" de l'auto-assignation : c'est lui qui decide quel livreur
+//  prend quelle commande, et qui maintient une FILE D'ATTENTE in-memory
+//  pour les commandes sans livreur disponible.
+//
+//  Jobs :
+//    1. PRODUCER : publier driver.events (driver.assigned, driver.location-updated)
+//    2. CONSUMER : ecouter order.events ET delivery.events (2 topics)
+//    3. AUTO-ASSIGNATION : a chaque order.placed -> trouve un driver dispo
+//       et l'assigne (publish driver.assigned). Sinon -> enqueue.
+//    4. LIBERATION : a chaque delivery.delivered/cancelled -> libere le
+//       driver et lui donne la prochaine commande en attente s'il y en a.
+//    5. NETTOYAGE QUEUE : retire des entrees obsoletes (order.cancelled,
+//       order.status-updated avec status != PENDING).
+//
+//  Etat in-memory : `pendingOrders` est un tableau JS. Volatile au restart
+//  (cohere avec le choix RxDB en memoire pour ce service).
+//
+//  Pour les conventions generales (fail-soft, LegacyPartitioner, groupId,
+//  fromBeginning), voir order-service/src/kafka.js.
+// =========================================================================
+
 const { Kafka, Partitioners, logLevel } = require('kafkajs');
 const repo = require('./drivers-repo');
 
+
+// --- Configuration --------------------------------------------------------
+
 const BROKER = process.env.KAFKA_BROKER || 'localhost:9092';
 const CLIENT_ID = 'driver-service';
-const DRIVER_TOPIC = 'driver.events';
-const ORDER_TOPIC = 'order.events';
-const DELIVERY_TOPIC = 'delivery.events';
+
+// 3 topics au total (1 publie + 2 consommes) :
+const DRIVER_TOPIC = 'driver.events';      // PUBLIE
+const ORDER_TOPIC = 'order.events';        // CONSOMME
+const DELIVERY_TOPIC = 'delivery.events';  // CONSOMME
+
+
+// --- Client Kafka, producer, consumer ------------------------------------
 
 const kafka = new Kafka({
   clientId: CLIENT_ID,
@@ -18,17 +52,32 @@ const producer = kafka.producer({
   createPartitioner: Partitioners.LegacyPartitioner,
 });
 
+// Un consumer abonne aux 2 topics (order + delivery). Meme pattern que
+// tracking-service : kafkajs delivre dans la meme boucle eachMessage
+// avec l'info `topic` pour distinguer.
 const consumer = kafka.consumer({ groupId: 'driver-service-group' });
 
 let producerReady = false;
 let consumerReady = false;
 
-// File d'attente en memoire des commandes qui n'ont pas trouve de driver
-// au moment ou order.placed est arrive. Vide au demarrage (volontairement,
-// la base RxDB est aussi en memoire donc on accepte la perte au restart).
-// Elle est consommee quand un driver devient AVAILABLE (RegisterDriver ou
-// liberation suite a delivery.delivered).
+
+// --- LA QUEUE in-memory --------------------------------------------------
+//
+// Elle existe pour le scenario suivant :
+//   1. Une commande est creee (order.placed)
+//   2. AUCUN driver n'est AVAILABLE
+//   3. -> On ne peut pas l'assigner tout de suite
+//   4. -> On la met en attente : pendingOrders.push({order_id, queued_at})
+//   5. Plus tard, quand un driver se libere (delivery.delivered) OU
+//      qu'un nouveau driver est cree (RegisterDriver), on prend la 1ere
+//      de la queue (FIFO) et on lui assigne.
+//
+// Volontairement IN-MEMORY (donc perdue au restart). Coherent avec RxDB
+// en memoire pour ce service. En vraie prod on stockerait en BDD.
 const pendingOrders = [];
+
+
+// --- Initialisation des topics --------------------------------------------
 
 async function ensureTopics() {
   const admin = kafka.admin();
@@ -47,6 +96,9 @@ async function ensureTopics() {
   }
 }
 
+
+// --- Connexion -----------------------------------------------------------
+
 async function connect() {
   try {
     await producer.connect();
@@ -61,12 +113,15 @@ async function connect() {
     console.log(`Topics Kafka prets : ${DRIVER_TOPIC}, ${ORDER_TOPIC}, ${DELIVERY_TOPIC}`);
 
     await consumer.connect();
+    // 2 subscribes successifs = abonnement aux 2 topics. Equivalent a
+    // un seul appel avec { topics: [...] } mais explicite.
     await consumer.subscribe({ topic: ORDER_TOPIC, fromBeginning: false });
     await consumer.subscribe({ topic: DELIVERY_TOPIC, fromBeginning: false });
     await consumer.run({
       eachMessage: async ({ topic, message }) => {
         try {
           const evt = JSON.parse(message.value.toString());
+          // Router selon le topic vers le bon handler.
           if (topic === ORDER_TOPIC) await handleOrderEvent(evt);
           else if (topic === DELIVERY_TOPIC) await handleDeliveryEvent(evt);
         } catch (err) {
@@ -81,6 +136,12 @@ async function connect() {
   }
 }
 
+
+// --- Publishers ----------------------------------------------------------
+
+// Publie quand un driver est assigne a une commande (auto ou via queue).
+// Consomme par tracking-service qui va UPDATE la delivery existante avec
+// le driver_id + driver_name + passer son status a ASSIGNED.
 async function publishDriverAssigned(driver, orderId) {
   if (!producerReady) return;
   try {
@@ -88,7 +149,7 @@ async function publishDriverAssigned(driver, orderId) {
       topic: DRIVER_TOPIC,
       messages: [
         {
-          key: driver.id,
+          key: driver.id,   // key = driver.id pour grouper les events du meme driver sur la meme partition
           value: JSON.stringify({
             type: 'driver.assigned',
             driver_id: driver.id,
@@ -105,6 +166,9 @@ async function publishDriverAssigned(driver, orderId) {
   }
 }
 
+// Publie a chaque update de position. Consomme par tracking-service
+// qui ajoute une ligne dans delivery_events (audit log GPS).
+// Pas de retour dans la cascade : c'est juste informatif.
 async function publishLocationUpdated(driverId, location) {
   if (!producerReady) return;
   try {
@@ -128,12 +192,17 @@ async function publishLocationUpdated(driverId, location) {
   }
 }
 
-// Quand une commande est creee (order.placed), on auto-assigne un livreur
-// disponible. Si aucun n'est dispo, on enqueue la commande pour qu'elle
-// soit prise plus tard par un RegisterDriver ou une liberation.
-// Quand une commande est annulee (order.cancelled), on la retire de la file
-// pour eviter qu'un futur driver ne soit assigne a une commande morte.
+
+// === Consumer handlers ===================================================
+
+// Traite les events recus sur order.events.
+// 3 types geres :
+//   - order.cancelled       -> nettoie la queue
+//   - order.status-updated  -> nettoie la queue si status != PENDING (fix bug)
+//   - order.placed          -> auto-assigne ou enqueue
 async function handleOrderEvent(evt) {
+
+  // CAS 1 : Commande annulee -> retirer de la queue si presente
   if (evt.type === 'order.cancelled') {
     if (!evt.order_id) return;
     const idx = pendingOrders.findIndex(p => p.order_id === evt.order_id);
@@ -144,9 +213,10 @@ async function handleOrderEvent(evt) {
     return;
   }
 
-  // Si une commande sort de PENDING par un autre chemin (ex: passage manuel
-  // a DELIVERED via l'API admin), on la retire aussi de la file pour eviter
-  // qu'un futur RegisterDriver ne se voie attribuer une commande deja close.
+  // CAS 2 : Si une commande sort de PENDING par un autre chemin (ex: passage
+  // manuel a DELIVERED via l'API admin), on la retire AUSSI de la file pour
+  // eviter qu'un futur RegisterDriver ne se voie attribuer une commande
+  // deja close. Fix d'un bug rencontre pendant les tests Postman.
   if (evt.type === 'order.status-updated') {
     if (!evt.order_id || evt.new_status === 'PENDING') return;
     const idx = pendingOrders.findIndex(p => p.order_id === evt.order_id);
@@ -157,49 +227,66 @@ async function handleOrderEvent(evt) {
     return;
   }
 
-  if (evt.type !== 'order.placed') {
-    return;
-  }
+  // CAS 3 : Nouvelle commande -> auto-assignation
+  if (evt.type !== 'order.placed') return;
   if (!evt.order_id) {
     console.error('Event order.placed sans order_id:', evt);
     return;
   }
 
+  // Cherche un driver dispo
   const available = await repo.pickAvailableDriver();
   if (!available) {
+    // Personne de dispo -> on enqueue avec timestamp pour l'audit
     pendingOrders.push({ order_id: evt.order_id, queued_at: new Date().toISOString() });
     console.warn(`Order ${evt.order_id} mis en file d'attente (aucun driver dispo, queue=${pendingOrders.length})`);
     return;
   }
 
+  // Driver trouve -> on l'assigne et on publie driver.assigned
   const updated = await repo.assignDriverToOrder(available.id, evt.order_id);
   console.log(`Auto-assignation : ${updated.name} (${updated.id}) -> commande ${evt.order_id}`);
   await publishDriverAssigned(updated, evt.order_id);
 }
 
-// Quand une livraison se termine ou est annulee, on libere le livreur,
-// puis on lui donne la prochaine commande de la queue s'il y en a une.
+
+// Traite les events recus sur delivery.events.
+// On ne reagit qu'aux events TERMINAUX (delivered / cancelled) qui liberent
+// le driver. Les events intermediaires (assigned, picked-up, in-transit)
+// ne nous concernent pas ici.
 async function handleDeliveryEvent(evt) {
   if (evt.type !== 'delivery.delivered' && evt.type !== 'delivery.cancelled') {
     return;
   }
   if (!evt.driver_id) return;
+
+  // Libere le driver (BUSY -> AVAILABLE) idempotent.
   const released = await repo.releaseDriver(evt.driver_id);
   if (released) {
     console.log(`Livreur libere : ${released.name} (${released.id}) suite a ${evt.type}`);
+    // Bonus : on lui donne tout de suite la prochaine commande en attente
+    // s'il y en a une dans la queue. Optimisation pour ne pas attendre un
+    // prochain RegisterDriver.
     await tryAssignToPending(released);
   }
 }
 
-// Prend la 1ere commande de la queue (si elle existe) et l'assigne au driver
-// donne. Appele a 2 endroits : RegisterDriver (nouveau driver) et apres
-// releaseDriver (driver re-AVAILABLE en fin de livraison).
+
+// --- Helper auto-assignation depuis la queue -----------------------------
+//
+// Appelee depuis 2 endroits :
+//   - grpc-server.js > RegisterDriver (nouveau driver cree)
+//   - kafka.js > handleDeliveryEvent (driver libere de sa livraison)
+//
+// Prend la 1ere commande de la queue (FIFO) et l'assigne au driver donne.
+// Si l'assignation echoue (driver supprime entre temps), on remet la
+// commande EN TETE de file (unshift) pour le prochain candidat.
 async function tryAssignToPending(driver) {
   if (!driver || pendingOrders.length === 0) return false;
   const next = pendingOrders.shift();
   const updated = await repo.assignDriverToOrder(driver.id, next.order_id);
   if (!updated) {
-    // driver disparu entre temps : on remet l'order en tete de file
+    // Driver disparu (DeleteDriver entre temps?) : on remet en tete
     pendingOrders.unshift(next);
     return false;
   }
@@ -208,15 +295,27 @@ async function tryAssignToPending(driver) {
   return true;
 }
 
+
+// Helper de debug, pas utilise par les autres modules mais expose au cas ou
+// on voudrait l'ajouter dans un endpoint /admin/queue par exemple.
 function getPendingCount() {
   return pendingOrders.length;
 }
+
 
 async function disconnect() {
   if (consumerReady) await consumer.disconnect().catch(() => {});
   if (producerReady) await producer.disconnect().catch(() => {});
 }
 
+
+// --- Exports --------------------------------------------------------------
+
+// On expose :
+//   - connect/disconnect       : lifecycle
+//   - les 2 publishers         : pour grpc-server.js (UpdateLocation, etc.)
+//   - tryAssignToPending       : pour grpc-server.js RegisterDriver
+//   - getPendingCount          : pour eventuel endpoint d'admin
 module.exports = {
   connect,
   disconnect,
